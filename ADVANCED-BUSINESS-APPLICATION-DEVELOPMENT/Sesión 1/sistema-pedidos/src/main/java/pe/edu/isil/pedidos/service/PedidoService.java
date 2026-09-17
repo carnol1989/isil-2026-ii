@@ -16,9 +16,7 @@ import java.util.List;
 @Stateless
 public class PedidoService {
 
-  @PersistenceContext(
-      unitName = "PedidosPU"
-  )
+  @PersistenceContext(unitName = "PedidosPU")
   private EntityManager entityManager;
 
   /**
@@ -30,38 +28,25 @@ public class PedidoService {
    * @return El pedido registrado.
    * @throws IllegalArgumentException Si alguno de los parámetros es inválido o si el producto no existe.
    */
-  @TransactionAttribute(
-      TransactionAttributeType.REQUIRED
-  )
+  @TransactionAttribute(TransactionAttributeType.REQUIRED)
   public Pedido registrarPedido(String cliente, Long productoId, int cantidad) {
-    if (cliente == null ||
-        cliente.isBlank()) {
-      throw new IllegalArgumentException("El cliente es obligatorio.");
-    }
-
-    if (productoId == null) {
-      throw new IllegalArgumentException("Debe seleccionar un producto.");
-    }
-
-    if (cantidad <= 0) {
-      throw new IllegalArgumentException("La cantidad debe ser mayor que cero.");
-    }
+    validarDatos(cliente, productoId, cantidad);
 
     Producto producto = entityManager.find(Producto.class, productoId);
-
     if (producto == null) {
-      throw new IllegalArgumentException("El producto no existe.");
+      throw new PedidoException("El producto no existe.");
     }
 
-    // REGLA DE NEGOCIO
-    producto.descontarStock(cantidad);
+    try {
+      // REGLA DE NEGOCIO
+      producto.descontarStock(cantidad);
+    } catch (IllegalArgumentException | IllegalStateException e) {
+      throw new PedidoException(e.getMessage());
+    }
 
     BigDecimal total = producto.getPrecio().multiply(BigDecimal.valueOf(cantidad));
-
     Pedido pedido = new Pedido(cliente.trim(), producto, cantidad, total);
-
     entityManager.persist(pedido);
-
     return pedido;
   }
 
@@ -70,9 +55,7 @@ public class PedidoService {
    *
    * @return Lista de productos.
    */
-  @TransactionAttribute(
-      TransactionAttributeType.REQUIRED
-  )
+  @TransactionAttribute(TransactionAttributeType.REQUIRED)
   public List<Producto> listarProductos() {
     inicializarProductosSiEsNecesario();
     return entityManager
@@ -92,9 +75,7 @@ public class PedidoService {
    *
    * @return Lista de pedidos.
    */
-  @TransactionAttribute(
-      TransactionAttributeType.SUPPORTS
-  )
+  @TransactionAttribute(TransactionAttributeType.SUPPORTS)
   public List<Pedido> listarPedidos() {
     return entityManager
         .createQuery(
@@ -107,6 +88,26 @@ public class PedidoService {
             Pedido.class
         )
         .getResultList();
+  }
+
+  /**
+   * Valida los datos de entrada para registrar un pedido.
+   *
+   * @param cliente    Nombre del cliente.
+   * @param productoId ID del producto.
+   * @param cantidad   Cantidad de productos.
+   * @throws PedidoException Si alguno de los datos es inválido.
+   */
+  private void validarDatos(String cliente, Long productoId, int cantidad) {
+    if (cliente == null || cliente.isBlank()) {
+      throw new PedidoException("El cliente es obligatorio.");
+    }
+    if (productoId == null) {
+      throw new PedidoException("Debe seleccionar un producto.");
+    }
+    if (cantidad <= 0) {
+      throw new PedidoException("La cantidad debe ser mayor que cero.");
+    }
   }
 
   /**
