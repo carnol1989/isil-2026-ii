@@ -1,0 +1,53 @@
+openapi: 3.0.3
+info:
+  title: Inventario Service
+  version: 1.0.0
+  description: API académica para consultar y reservar stock.
+servers:
+  - url: http://localhost:8082/inventario-service/api
+paths:
+  /inventario/productos:
+    get:
+      summary: Lista productos de inventario
+      responses:
+        '200':
+          description: Lista obtenida correctamente
+  /inventario/productos/{id}/stock:
+    get:
+      summary: Consulta el stock de un producto
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200': { description: Stock consultado }
+        '404': { description: Producto no encontrado }
+  /inventario/productos/{id}/reservas:
+    post:
+      summary: Reserva/descuenta stock de un producto
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReservaStockRequest'
+      responses:
+        '200': { description: Stock reservado correctamente }
+        '400': { description: Datos inválidos }
+        '404': { description: Producto no encontrado }
+        '409': { description: Stock insuficiente o conflicto de concurrencia }
+components:
+  schemas:
+    ReservaStockRequest:
+      type: object
+      required: [cantidad]
+      properties:
+        cantidad:
+          type: integer
+          minimum: 1
