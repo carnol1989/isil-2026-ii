@@ -9,46 +9,45 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 
 /**
- * Entidad que representa un producto disponible para la venta.
+ * Catálogo local del Sistema de Pedidos.
+ *
+ * <p>El stock ya no se almacena aquí. La fuente oficial del stock es
+ * inventario-service. El campo {@code codigo} actúa como identificador de
+ * negocio compartido entre ambos sistemas.</p>
  */
 @Entity
 @Table(name = "producto")
 public class Producto {
 
   @Id
-  @GeneratedValue(
-      strategy = GenerationType.IDENTITY
-  )
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
 
-  @Column(
-      nullable = false,
-      length = 100
-  )
+  @Column(nullable = false, unique = true, length = 30)
+  private String codigo;
+
+  @Column(nullable = false, length = 100)
   private String nombre;
 
-  @Column(
-      nullable = false,
-      precision = 12,
-      scale = 2
-  )
+  @Column(nullable = false, precision = 12, scale = 2)
   private BigDecimal precio;
 
-  @Column(nullable = false)
-  private int stock;
-
   protected Producto() {
-    // Constructor requerido por JPA
+    // Constructor requerido por JPA.
   }
 
-  public Producto(String nombre, BigDecimal precio, int stock) {
+  public Producto(String codigo, String nombre, BigDecimal precio) {
+    this.codigo = codigo;
     this.nombre = nombre;
     this.precio = precio;
-    this.stock = stock;
   }
 
   public Long getId() {
     return id;
+  }
+
+  public String getCodigo() {
+    return codigo;
   }
 
   public String getNombre() {
@@ -58,21 +57,4 @@ public class Producto {
   public BigDecimal getPrecio() {
     return precio;
   }
-
-  public int getStock() {
-    return stock;
-  }
-
-  public void descontarStock(int cantidad) {
-    if (cantidad <= 0) {
-      throw new IllegalArgumentException("La cantidad debe ser mayor que cero.");
-    }
-
-    if (cantidad > stock) {
-      throw new IllegalStateException("Stock insuficiente. Disponible: " + stock);
-    }
-
-    stock -= cantidad;
-  }
-
 }

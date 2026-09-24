@@ -1,76 +1,82 @@
-# Sistema de Pedidos — Servlet + JSP + Maven
+# Sistema de Pedidos — Integración con inventario-service
 
-Proyecto académico para demostrar una aplicación empresarial básica con Jakarta EE.
-
-## Tecnologías
-
-- Java 21
-- Maven
-- Jakarta EE 11
-- Jakarta Servlet
-- JSP / Jakarta Server Pages
-- Jakarta Tags (JSTL)
-- Jakarta Enterprise Beans (EJB)
-- Jakarta Persistence (JPA)
-- Hibernate ORM provisto por WildFly
-- H2
-- WildFly 41
-- WildFly Maven Plugin
+Versión de la Sesión 4 que evoluciona el proyecto Servlet + JSP + EJB + JPA para demostrar integración inter-sistemas mediante Jakarta REST Client.
 
 ## Arquitectura
 
 ```text
 Navegador
     |
-    | HTTP
     v
 PedidoServlet
     |
-    | @EJB
     v
 PedidoService
-    |
-    | JPA / EntityManager
-    v
-ExampleDS
-    |
-    v
-H2
+   / \
+  /   \
+ v     v
+JPA   InventarioClient
+ |        |
+ v        | HTTP + JSON
+H2        v
+      inventario-service
+             |
+             v
+      SQL Server Express 2025
 ```
 
-La JSP actúa como vista:
+### Responsabilidades
 
-```text
-PedidoServlet
-    |
-    | request.setAttribute(...)
-    v
-/WEB-INF/views/pedidos.jsp
-```
+- `sistema-pedidos-jsp` mantiene catálogo local, precios y pedidos en H2.
+- `inventario-service` es la fuente oficial del stock en SQL Server.
+- Ambos sistemas se relacionan mediante `codigo` (`LAP-001`, `MON-001`, `TEC-001`), no mediante sus claves primarias.
 
 ## Requisitos
 
-- JDK 21
-- Maven 3.9 o superior
-- Acceso a Internet la primera vez para descargar dependencias
-- Puerto 8081 disponible
+- JDK 21.
+- Maven 3.9+.
+- `inventario-service` funcionando en `http://127.0.0.1:8082`.
+- Puerto 8081 disponible para este proyecto.
 
-Verificar:
+## Configuración externa
 
-```bash
-java -version
-mvn -version
+Editar, si es necesario:
+
+```text
+config/integraciones.properties
 ```
 
-## Ejecutar
+```properties
+inventario.api.base-url=http://127.0.0.1:8082/inventario-service/api/inventario
+inventario.api.connect-timeout-ms=2000
+inventario.api.read-timeout-ms=3000
+```
 
-Desde la raíz del proyecto:
+La URL no está hardcodeada en las clases Java.
+
+## Orden de ejecución
+
+### 1. Levantar inventario-service
+
+En una primera terminal:
 
 ```bash
 mvn clean wildfly:run
 ```
 
-El plugin provisionará WildFly dentro de `target/server`.
+Debe responder, por ejemplo:
+
+```text
+GET http://127.0.0.1:8082/inventario-service/api/inventario/productos
+```
+
+### 2. Levantar sistema-pedidos-jsp
+
+En una segunda terminal, desde este proyecto:
+
+```bash
+mvn clean wildfly:run
+```
 
 Abrir:
 
@@ -78,66 +84,40 @@ Abrir:
 http://localhost:8081/sistema-pedidos/
 ```
 
-o directamente:
+## Flujo al registrar un pedido
+
+1. `PedidoServlet` recibe el POST.
+2. `PedidoService` busca el producto local en H2.
+3. Obtiene el código de negocio, por ejemplo `LAP-001`.
+4. `InventarioClient` ejecuta `POST /productos/codigo/LAP-001/reservas`.
+5. `inventario-service` valida y descuenta stock en SQL Server.
+6. Si la reserva responde 200, `PedidoService` calcula el total y persiste el pedido en H2.
+7. El Servlet aplica PRG (`Post/Redirect/Get`).
+
+## Errores
+
+- HTTP 400/404/409 de inventario-service se convierten en errores de negocio del formulario.
+- Si inventario-service no responde o se supera el timeout, se devuelve HTTP 503 desde sistema-pedidos-jsp.
+- No se implementan reintentos automáticos del POST de reserva porque el endpoint todavía no implementa una clave de idempotencia.
+
+## Frontera transaccional
+
+La reserva remota y el INSERT local no comparten automáticamente la misma transacción:
 
 ```text
-http://localhost:8081/sistema-pedidos/pedidos
+inventario-service / SQL Server    sistema-pedidos-jsp / H2
+           |                                  |
+       COMMIT stock                       COMMIT pedido
 ```
 
-Para detener WildFly: `Ctrl + C`.
+Si el stock se confirma y luego falla el INSERT del pedido, sería necesaria una estrategia de compensación/idempotencia en una evolución posterior. Esto se mantiene deliberadamente visible como concepto de la Sesión 4.
 
-## Flujo de la aplicación
+## Productos de demostración
 
-1. `PedidoServlet#doGet()` consulta productos y pedidos.
-2. El Servlet coloca los datos en el `request`.
-3. Se ejecuta un `forward` hacia `pedidos.jsp`.
-4. La JSP presenta los datos utilizando EL y Jakarta Tags.
-5. El formulario realiza `POST /pedidos`.
-6. `PedidoServlet#doPost()` recibe los parámetros.
-7. `PedidoService` valida las reglas de negocio.
-8. JPA persiste el pedido y actualiza el stock.
-9. Se utiliza el patrón PRG: Post / Redirect / Get.
+Los códigos deben coincidir en ambos proyectos:
 
-## Base de datos
+- `LAP-001` — Laptop — precio local S/ 2500.00.
+- `MON-001` — Monitor — precio local S/ 850.00.
+- `TEC-001` — Teclado — precio local S/ 120.00.
 
-Se utiliza el DataSource de ejemplo de WildFly:
-
-```text
-java:jboss/datasources/ExampleDS
-```
-
-con H2 en memoria.
-
-`persistence.xml` usa `drop-and-create`, por lo que tablas y datos se reinician al desplegar una nueva instancia.
-
-## Productos iniciales
-
-- Laptop — S/ 2500.00 — Stock 5
-- Monitor — S/ 850.00 — Stock 8
-- Teclado — S/ 120.00 — Stock 15
-
-## Archivos principales
-
-```text
-src/main/java/pe/edu/isil/pedidos/
-├── domain/
-│   ├── Pedido.java
-│   └── Producto.java
-├── service/
-│   ├── PedidoException.java
-│   └── PedidoService.java
-└── web/
-    └── PedidoServlet.java
-
-src/main/resources/META-INF/
-└── persistence.xml
-
-src/main/webapp/
-├── index.jsp
-├── assets/css/app.css
-└── WEB-INF/views/pedidos.jsp
-```
-
-## Nota
-- Las JSP se ubican dentro de `WEB-INF/views` para evitar su acceso directo. Se renderizan mediante `forward` desde el Servlet.
-- Esta es la versión base Servlet + JSP + Maven. No incluye todavía la tarea de edición y eliminación de pedidos.
+El stock se obtiene exclusivamente de inventario-service.

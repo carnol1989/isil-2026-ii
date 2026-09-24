@@ -6,7 +6,7 @@
 
     <groupId>pe.edu.isil</groupId>
     <artifactId>sistema-pedidos</artifactId>
-    <version>1.1.0-SNAPSHOT</version>
+    <version>1.2.0-SNAPSHOT</version>
 
     <packaging>war</packaging>
 
@@ -36,11 +36,10 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.14.0</version>
                 <configuration>
-                    <release>
-                        ${maven.compiler.release}
-                    </release>
+                    <release>${maven.compiler.release}</release>
                 </configuration>
             </plugin>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-war-plugin</artifactId>
@@ -49,16 +48,25 @@
                     <failOnMissingWebXml>false</failOnMissingWebXml>
                 </configuration>
             </plugin>
+
             <plugin>
                 <groupId>org.wildfly.plugins</groupId>
                 <artifactId>wildfly-maven-plugin</artifactId>
-                <version>
-                    ${wildfly.maven.plugin.version}
-                </version>
+                <version>${wildfly.maven.plugin.version}</version>
                 <configuration>
                     <feature-pack-location>
                         wildfly@maven(org.jboss.universe:community-universe)#41.0.0.Final
                     </feature-pack-location>
+
+                    <!--
+                      Las propiedades del servicio externo se mantienen fuera del WAR.
+                      WildFly las carga como System Properties al iniciar.
+                    -->
+                    <propertiesFile>
+                        ${project.basedir}/config/integraciones.properties
+                    </propertiesFile>
+
+                    <!-- El proyecto de pedidos permanece en HTTP 8081. -->
                     <javaOpts>
                         <javaOpt>-Djboss.http.port=8081</javaOpt>
                     </javaOpts>
