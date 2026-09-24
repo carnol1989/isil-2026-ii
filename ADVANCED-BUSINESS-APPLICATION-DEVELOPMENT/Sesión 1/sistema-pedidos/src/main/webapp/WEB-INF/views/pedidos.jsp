@@ -17,10 +17,12 @@
         <div>
             <p class="eyebrow">Jakarta EE 11 · Integración inter-sistemas</p>
             <h1>Sistema de Pedidos</h1>
-            <p class="subtitulo">El catálogo y los pedidos se mantienen en H2; el stock se consulta y reserva mediante inventario-service.</p>
+            <p class="subtitulo">
+                El catálogo, precio y stock provienen de inventario-service; H2 conserva el histórico de pedidos.
+            </p>
         </div>
         <div class="flujo">
-            Servlet → EJB → H2 + REST → inventario-service → SQL Server
+            Servlet → EJB → REST → inventario-service → SQL Server · Pedido → H2
         </div>
     </header>
 
@@ -54,16 +56,20 @@
 
             <label>
                 Producto
-                <select name="productoId" required>
+                <select name="productoCodigo" required>
+                    <option value="">Seleccione un producto</option>
                     <c:forEach var="producto" items="${productos}">
-                        <option value="${producto.id}" ${producto.stock le 0 ? 'disabled' : ''}>
+                        <option
+                                value="${producto.codigo}"
+                                ${producto.stock le 0 ? 'disabled' : ''}
+                                ${producto.codigo eq productoCodigoIngresado ? 'selected' : ''}>
                             <c:out value="${producto.codigo}"/> -
                             <c:out value="${producto.nombre}"/> - S/
                             <fmt:formatNumber
                                     value="${producto.precio}"
                                     minFractionDigits="2"
                                     maxFractionDigits="2"/>
-                            - stock remoto: <c:out value="${producto.stock}"/>
+                            - stock: <c:out value="${producto.stock}"/>
                         </option>
                     </c:forEach>
                 </select>
@@ -86,7 +92,9 @@
     <section class="tarjeta">
         <div class="titulo-tabla">
             <h2>Pedidos registrados</h2>
-            <p>Los pedidos permanecen en H2; la reserva de stock ya fue realizada previamente en inventario-service.</p>
+            <p>
+                Cada pedido conserva un snapshot del código, nombre y precio vigente al momento de la compra.
+            </p>
         </div>
 
         <div class="tabla-scroll">
@@ -97,6 +105,7 @@
                     <th>Cliente</th>
                     <th>Código</th>
                     <th>Producto</th>
+                    <th>Precio unitario</th>
                     <th>Cantidad</th>
                     <th>Total</th>
                     <th>Fecha</th>
@@ -107,8 +116,15 @@
                     <tr>
                         <td><c:out value="${pedido.id}"/></td>
                         <td><c:out value="${pedido.cliente}"/></td>
-                        <td><c:out value="${pedido.producto.codigo}"/></td>
-                        <td><c:out value="${pedido.producto.nombre}"/></td>
+                        <td><c:out value="${pedido.productoCodigo}"/></td>
+                        <td><c:out value="${pedido.productoNombre}"/></td>
+                        <td>
+                            S/
+                            <fmt:formatNumber
+                                    value="${pedido.precioUnitario}"
+                                    minFractionDigits="2"
+                                    maxFractionDigits="2"/>
+                        </td>
                         <td><c:out value="${pedido.cantidad}"/></td>
                         <td>
                             S/
@@ -123,7 +139,7 @@
 
                 <c:if test="${empty pedidos}">
                     <tr>
-                        <td colspan="7" class="sin-datos">Aún no hay pedidos.</td>
+                        <td colspan="8" class="sin-datos">Aún no hay pedidos.</td>
                     </tr>
                 </c:if>
                 </tbody>

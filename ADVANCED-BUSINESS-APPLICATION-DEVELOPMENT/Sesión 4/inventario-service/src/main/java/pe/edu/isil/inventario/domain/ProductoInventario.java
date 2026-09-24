@@ -7,9 +7,10 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import java.math.BigDecimal;
 
 /**
- * Entidad que representa el stock disponible de un producto.
+ * Entidad que representa el catálogo y el stock disponible de un producto.
  */
 @Entity
 @Table(name = "producto_inventario")
@@ -25,6 +26,9 @@ public class ProductoInventario {
   @Column(nullable = false, length = 120)
   private String nombre;
 
+  @Column(nullable = false, precision = 12, scale = 2)
+  private BigDecimal precio;
+
   @Column(nullable = false)
   private int stock;
 
@@ -39,18 +43,23 @@ public class ProductoInventario {
     // Requerido por Jakarta Persistence.
   }
 
-  public ProductoInventario(String codigo, String nombre, int stock) {
+  public ProductoInventario(String codigo, String nombre, BigDecimal precio, int stock) {
     if (codigo == null || codigo.isBlank()) {
       throw new IllegalArgumentException("El código es obligatorio.");
     }
     if (nombre == null || nombre.isBlank()) {
       throw new IllegalArgumentException("El nombre es obligatorio.");
     }
+    if (precio == null || precio.signum() < 0) {
+      throw new IllegalArgumentException("El precio debe ser mayor o igual a cero.");
+    }
     if (stock < 0) {
       throw new IllegalArgumentException("El stock no puede ser negativo.");
     }
+
     this.codigo = codigo.trim();
     this.nombre = nombre.trim();
+    this.precio = precio;
     this.stock = stock;
   }
 
@@ -76,6 +85,10 @@ public class ProductoInventario {
 
   public String getNombre() {
     return nombre;
+  }
+
+  public BigDecimal getPrecio() {
+    return precio;
   }
 
   public int getStock() {

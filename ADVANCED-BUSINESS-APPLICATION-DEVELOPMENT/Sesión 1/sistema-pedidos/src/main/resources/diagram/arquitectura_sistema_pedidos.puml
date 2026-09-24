@@ -1,77 +1,40 @@
 @startuml
-' Sistema de Pedidos - Sesión 3
-' Arquitectura del proyecto analizado: Servlet + JSP + EJB + JPA + H2
-
-title Sistema de Pedidos - Arquitectura Web Empresarial
-
 skinparam componentStyle rectangle
-skinparam shadowing false
-skinparam packageStyle rectangle
-skinparam defaultTextAlignment center
-skinparam ArrowColor #555555
-skinparam NoteBackgroundColor #FFF7D6
-skinparam NoteBorderColor #C9A227
 
-actor "Usuario" as Usuario
-
-package "FRONT-END / CLIENTE" {
-  component "Navegador\nHTML + CSS + JavaScript" as Browser
+actor Usuario
+component "sistema-pedidos-jsp\n:8081" as Pedidos {
+  component PedidoServlet
+  component PedidoService
+  database "H2\nPedidos" as H2
+}
+component "inventario-service\n:8082" as Inventario {
+  component "ProductoResource\nJakarta REST" as Resource
+  component InventarioService
+  database "SQL Server Express 2025\nInventarioDB" as SQL
 }
 
-package "BACK-END - WildFly 41 / Jakarta EE 11" {
-  package "Capa Web" {
-    component "PedidoServlet\n<<Servlet>>\n@WebServlet(\"/pedidos\")" as Servlet
-    component "pedidos.jsp\n<<JSP + EL + Jakarta Tags>>" as JSP
-    component "error.jsp\n<<JSP>>" as ErrorJSP
-  }
+Usuario --> PedidoServlet : HTTP
+PedidoServlet --> PedidoService : @EJB
+PedidoService --> H2 : JPA\nPedido snapshot
+PedidoService --> Resource : HTTP + JSON\nJakarta REST Client
+Resource --> InventarioService : @EJB
+InventarioService --> SQL : JPA
 
-  package "Capa de Negocio" {
-    component "PedidoService\n<<EJB @Stateless>>" as Service
-  }
-
-  package "Capa de Persistencia" {
-    component "JPA / EntityManager\n@PersistenceContext\nPedidosPU" as JPA
-    component "Pedido\n<<Entity>>" as Pedido
-    component "Producto\n<<Entity>>" as Producto
-  }
-}
-
-database "H2\nDataSource: ExampleDS" as DB
-
-Usuario --> Browser : interacción
-Browser --> Servlet : HTTP\nGET /pedidos\nPOST /pedidos
-Servlet --> Service : @EJB\ninvoca lógica de negocio
-Service --> JPA : EntityManager
-JPA --> Pedido : gestiona entidad
-JPA --> Producto : gestiona entidad
-JPA --> DB : JPA / SQL / JTA
-
-Servlet --> JSP : forward\nrequest.setAttribute(...)
-JSP --> Browser : HTTP Response\nHTML generado
-Servlet --> Browser : redirect\nPRG después de crear
-Servlet --> ErrorJSP : forward\nerror técnico
-ErrorJSP --> Browser : HTML de error
-
-note right of JSP
-  La JSP se procesa en el servidor.
-  El navegador recibe HTML,
-  no código JSP.
+note right of SQL
+Fuente de verdad de:
+- código
+- nombre
+- precio
+- stock
 end note
 
-note bottom of Browser
-  Tema de clase: FRONT-END
-  Presentación e interacción del usuario.
+note left of H2
+Conserva el histórico:
+- cliente
+- productoCodigo
+- productoNombre
+- precioUnitario
+- cantidad
+- total
 end note
-
-note bottom of Service
-  Tema de clase: COMPONENTES EMPRESARIALES
-  Responsabilidades separadas y bajo acoplamiento.
-end note
-
-note bottom of DB
-  Tema de clase: BACK-END / PERSISTENCIA
-  Datos almacenados en H2.
-end note
-N1 .. Servlet
-
 @enduml

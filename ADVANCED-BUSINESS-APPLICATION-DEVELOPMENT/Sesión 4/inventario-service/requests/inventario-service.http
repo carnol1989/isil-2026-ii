@@ -1,19 +1,19 @@
 @baseUrl = http://localhost:8082/inventario-service/api
 
-### Listar productos
+### Listar catálogo completo: nombre, precio y stock
 GET {{baseUrl}}/inventario/productos
 Accept: application/json
 
-### Consultar producto 1
-GET {{baseUrl}}/inventario/productos/1
+### Consultar producto por código
+GET {{baseUrl}}/inventario/productos/codigo/LAP-001
 Accept: application/json
 
-### Consultar stock del producto 1
-GET {{baseUrl}}/inventario/productos/1/stock
+### Consultar stock por código
+GET {{baseUrl}}/inventario/productos/codigo/LAP-001/stock
 Accept: application/json
 
-### Reservar 2 unidades del producto 1 (integración mínima con sistema-pedidos actual)
-POST {{baseUrl}}/inventario/productos/1/reservas
+### Reservar por código: devuelve también nombre y precio
+POST {{baseUrl}}/inventario/productos/codigo/LAP-001/reservas
 Content-Type: application/json
 Accept: application/json
 
@@ -21,21 +21,8 @@ Accept: application/json
   "cantidad": 2
 }
 
-### Consultar por código estable
-GET {{baseUrl}}/inventario/productos/codigo/LAP-001/stock
-Accept: application/json
-
-### Reservar por código estable (recomendado entre sistemas)
+### Validación: cantidad inválida
 POST {{baseUrl}}/inventario/productos/codigo/LAP-001/reservas
-Content-Type: application/json
-Accept: application/json
-
-{
-  "cantidad": 1
-}
-
-### Probar validación: cantidad inválida
-POST {{baseUrl}}/inventario/productos/1/reservas
 Content-Type: application/json
 Accept: application/json
 
@@ -43,8 +30,8 @@ Accept: application/json
   "cantidad": 0
 }
 
-### Probar stock insuficiente
-POST {{baseUrl}}/inventario/productos/1/reservas
+### Regla de negocio: stock insuficiente
+POST {{baseUrl}}/inventario/productos/codigo/LAP-001/reservas
 Content-Type: application/json
 Accept: application/json
 

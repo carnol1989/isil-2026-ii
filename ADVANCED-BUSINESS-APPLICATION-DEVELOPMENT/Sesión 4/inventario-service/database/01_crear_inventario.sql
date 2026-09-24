@@ -1,6 +1,6 @@
 /*
+  Instalación limpia de InventarioDB.
   Ejecutar con una cuenta administradora en SQL Server Management Studio (SSMS).
-  Proyecto académico: inventario-service.
 */
 
 IF DB_ID(N'InventarioDB') IS NULL
@@ -40,10 +40,12 @@ BEGIN
         id       BIGINT IDENTITY(1,1) NOT NULL,
         codigo   VARCHAR(30)          NOT NULL,
         nombre   VARCHAR(120)         NOT NULL,
+        precio   DECIMAL(12,2)        NOT NULL,
         stock    INT                  NOT NULL,
         version  BIGINT               NOT NULL CONSTRAINT DF_producto_version DEFAULT (0),
         CONSTRAINT PK_producto_inventario PRIMARY KEY (id),
         CONSTRAINT UQ_producto_inventario_codigo UNIQUE (codigo),
+        CONSTRAINT CK_producto_inventario_precio CHECK (precio >= 0),
         CONSTRAINT CK_producto_inventario_stock CHECK (stock >= 0)
     );
 END;
@@ -55,17 +57,21 @@ GO
 MERGE dbo.producto_inventario AS target
 USING (
     VALUES
-        ('LAP-001', 'Laptop', 10),
-        ('MON-001', 'Monitor', 20),
-        ('TEC-001', 'Teclado', 30)
-) AS source(codigo, nombre, stock)
+        ('LAP-001', 'Laptop',  CAST(2500.00 AS DECIMAL(12,2)), 10),
+        ('MON-001', 'Monitor', CAST(850.00  AS DECIMAL(12,2)), 20),
+        ('TEC-001', 'Teclado', CAST(120.00  AS DECIMAL(12,2)), 30)
+) AS source(codigo, nombre, precio, stock)
 ON target.codigo = source.codigo
+WHEN MATCHED THEN
+    UPDATE SET
+        target.nombre = source.nombre,
+        target.precio = source.precio
 WHEN NOT MATCHED THEN
-    INSERT (codigo, nombre, stock, version)
-    VALUES (source.codigo, source.nombre, source.stock, 0);
+    INSERT (codigo, nombre, precio, stock, version)
+    VALUES (source.codigo, source.nombre, source.precio, source.stock, 0);
 GO
 
-SELECT id, codigo, nombre, stock, version
+SELECT id, codigo, nombre, precio, stock, version
 FROM dbo.producto_inventario
 ORDER BY id;
 GO

@@ -1,5 +1,7 @@
 package pe.edu.isil.pedidos.integration.dto;
 
+import java.math.BigDecimal;
+
 /**
  * Contrato recibido desde GET /inventario/productos.
  */
@@ -8,6 +10,7 @@ public class ProductoInventarioResponse {
   private Long id;
   private String codigo;
   private String nombre;
+  private BigDecimal precio;
   private int stock;
   private Long version;
 
@@ -36,6 +39,14 @@ public class ProductoInventarioResponse {
 
   public void setNombre(String nombre) {
     this.nombre = nombre;
+  }
+
+  public BigDecimal getPrecio() {
+    return precio;
+  }
+
+  public void setPrecio(BigDecimal precio) {
+    this.precio = precio;
   }
 
   public int getStock() {

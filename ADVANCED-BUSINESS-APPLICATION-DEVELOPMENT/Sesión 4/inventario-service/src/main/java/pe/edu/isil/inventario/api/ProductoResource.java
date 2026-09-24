@@ -20,11 +20,7 @@ import pe.edu.isil.inventario.dto.StockResponse;
 import pe.edu.isil.inventario.service.InventarioService;
 
 /**
- * API REST del inventario.
- *
- * <p>Se exponen endpoints por id para facilitar la integración inicial con el
- * proyecto actual sistema-pedidos-jsp, y endpoints por código como alternativa
- * de contrato más estable entre sistemas.</p>
+ * API REST responsable del catálogo y del stock.
  */
 @Path("/inventario/productos")
 @Produces(MediaType.APPLICATION_JSON)
@@ -82,7 +78,10 @@ public class ProductoResource {
       @PathParam("codigo") String codigo,
       @NotNull @Valid ReservaStockRequest request
   ) {
-    ProductoInventario producto = inventarioService.reservarStockPorCodigo(codigo, request.getCantidad());
+    ProductoInventario producto = inventarioService.reservarStockPorCodigo(
+        codigo,
+        request.getCantidad()
+    );
     return Response.ok(toReservaResponse(producto, request.getCantidad())).build();
   }
 
@@ -91,6 +90,7 @@ public class ProductoResource {
         producto.getId(),
         producto.getCodigo(),
         producto.getNombre(),
+        producto.getPrecio(),
         producto.getStock(),
         producto.getVersion()
     );
@@ -112,6 +112,8 @@ public class ProductoResource {
     return new ReservaStockResponse(
         producto.getId(),
         producto.getCodigo(),
+        producto.getNombre(),
+        producto.getPrecio(),
         cantidadReservada,
         producto.getStock(),
         producto.getVersion()

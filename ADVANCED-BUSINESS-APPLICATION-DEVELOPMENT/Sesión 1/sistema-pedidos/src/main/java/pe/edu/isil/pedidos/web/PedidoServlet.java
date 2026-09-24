@@ -43,17 +43,17 @@ public class PedidoServlet extends HttpServlet {
 
     try {
       String cliente = request.getParameter("cliente");
-      Long productoId = Long.valueOf(request.getParameter("productoId"));
+      String productoCodigo = request.getParameter("productoCodigo");
       int cantidad = Integer.parseInt(request.getParameter("cantidad"));
 
-      Pedido pedido = pedidoService.registrarPedido(cliente, productoId, cantidad);
+      Pedido pedido = pedidoService.registrarPedido(cliente, productoCodigo, cantidad);
 
       // Patrón PRG (Post/Redirect/Get) para evitar reenvíos del formulario.
       response.sendRedirect(
           request.getContextPath() + "/pedidos?creado=" + pedido.getId()
       );
     } catch (NumberFormatException e) {
-      mostrarErrorNegocio(request, response, "Producto o cantidad inválidos.");
+      mostrarErrorNegocio(request, response, "La cantidad ingresada es inválida.");
     } catch (InventarioNoDisponibleException e) {
       mostrarServicioNoDisponible(request, response, e.getMessage());
     } catch (PedidoException e) {
@@ -76,6 +76,7 @@ public class PedidoServlet extends HttpServlet {
     response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
 
     request.setAttribute("clienteIngresado", request.getParameter("cliente"));
+    request.setAttribute("productoCodigoIngresado", request.getParameter("productoCodigo"));
     request.setAttribute("cantidadIngresada", request.getParameter("cantidad"));
     request.setAttribute("error", mensaje);
 

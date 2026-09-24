@@ -8,18 +8,18 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 import pe.edu.isil.pedidos.domain.Pedido;
-import pe.edu.isil.pedidos.domain.Producto;
-import pe.edu.isil.pedidos.dto.ProductoVista;
 import pe.edu.isil.pedidos.integration.InventarioClient;
 import pe.edu.isil.pedidos.integration.InventarioClientException;
 import pe.edu.isil.pedidos.integration.dto.ProductoInventarioResponse;
+import pe.edu.isil.pedidos.integration.dto.ReservaStockResponse;
 
 /**
- * Servicio EJB que maneja la lógica de negocio relacionada con los pedidos.
+ * Servicio EJB responsable de los pedidos.
+ *
+ * <p>El catálogo, precio y stock pertenecen a inventario-service. Esta
+ * aplicación solo conserva un snapshot de los datos del producto dentro del
+ * pedido histórico.</p>
  */
 @Stateless
 public class PedidoService {
@@ -30,78 +30,42 @@ public class PedidoService {
   @EJB
   private InventarioClient inventarioClient;
 
-  /**
-   * Registra un nuevo pedido.
-   *
-   * <p>El stock ya no se descuenta en H2. Se reserva mediante inventario-service.
-   * La reserva remota y el INSERT local son transacciones independientes; este
-   * punto se documenta como una frontera transaccional distribuida de la sesión.</p>
-   */
   @TransactionAttribute(TransactionAttributeType.REQUIRED)
-  public Pedido registrarPedido(String cliente, Long productoId, int cantidad) {
-    validarDatos(cliente, productoId, cantidad);
+  public Pedido registrarPedido(String cliente, String productoCodigo, int cantidad) {
+    validarDatos(cliente, productoCodigo, cantidad);
 
-    Producto producto = entityManager.find(Producto.class, productoId);
-    if (producto == null) {
-      throw new PedidoException("El producto no existe.");
-    }
-
+    final ReservaStockResponse reserva;
     try {
-      // inventario-service valida disponibilidad y descuenta en SQL Server.
-      inventarioClient.reservarStock(producto.getCodigo(), cantidad);
+      // Una sola operación remota valida disponibilidad y descuenta el stock.
+      reserva = inventarioClient.reservarStock(productoCodigo.trim(), cantidad);
     } catch (InventarioClientException e) {
-      // 400/404/409 son errores controlados del servicio remoto y se muestran
-      // como errores de negocio en el Sistema de Pedidos.
+      // 400/404/409 se presentan como errores de negocio del formulario.
       throw new PedidoException(e.getMessage());
     }
 
-    BigDecimal total = producto.getPrecio().multiply(BigDecimal.valueOf(cantidad));
-    Pedido pedido = new Pedido(cliente.trim(), producto, cantidad, total);
+    validarReserva(reserva);
+
+    BigDecimal total = reserva.getPrecio().multiply(BigDecimal.valueOf(cantidad));
+
+    Pedido pedido = new Pedido(
+        cliente.trim(),
+        reserva.getCodigo(),
+        reserva.getNombre(),
+        reserva.getPrecio(),
+        cantidad,
+        total
+    );
+
     entityManager.persist(pedido);
     return pedido;
   }
 
   /**
-   * Combina el catálogo/precio local con el stock remoto.
+   * El combo de productos se obtiene directamente desde inventario-service.
    */
-  @TransactionAttribute(TransactionAttributeType.REQUIRED)
-  public List<ProductoVista> listarProductos() {
-    inicializarProductosSiEsNecesario();
-
-    List<Producto> productosLocales = entityManager
-        .createQuery(
-            """
-            select p
-            from Producto p
-            order by p.id
-            """,
-            Producto.class
-        )
-        .getResultList();
-
-    List<ProductoInventarioResponse> inventario = inventarioClient.listarProductos();
-
-    Map<String, ProductoInventarioResponse> inventarioPorCodigo = inventario.stream()
-        .collect(Collectors.toMap(
-            ProductoInventarioResponse::getCodigo,
-            Function.identity(),
-            (primero, segundo) -> primero
-        ));
-
-    return productosLocales.stream()
-        .map(producto -> {
-          ProductoInventarioResponse remoto = inventarioPorCodigo.get(producto.getCodigo());
-          int stock = remoto != null ? remoto.getStock() : 0;
-
-          return new ProductoVista(
-              producto.getId(),
-              producto.getCodigo(),
-              producto.getNombre(),
-              producto.getPrecio(),
-              stock
-          );
-        })
-        .toList();
+  @TransactionAttribute(TransactionAttributeType.SUPPORTS)
+  public List<ProductoInventarioResponse> listarProductos() {
+    return inventarioClient.listarProductos();
   }
 
   @TransactionAttribute(TransactionAttributeType.SUPPORTS)
@@ -111,7 +75,6 @@ public class PedidoService {
             """
             select p
             from Pedido p
-            join fetch p.producto
             order by p.id desc
             """,
             Pedido.class
@@ -119,11 +82,11 @@ public class PedidoService {
         .getResultList();
   }
 
-  private void validarDatos(String cliente, Long productoId, int cantidad) {
+  private void validarDatos(String cliente, String productoCodigo, int cantidad) {
     if (cliente == null || cliente.isBlank()) {
       throw new PedidoException("El cliente es obligatorio.");
     }
-    if (productoId == null) {
+    if (productoCodigo == null || productoCodigo.isBlank()) {
       throw new PedidoException("Debe seleccionar un producto.");
     }
     if (cantidad <= 0) {
@@ -131,25 +94,16 @@ public class PedidoService {
     }
   }
 
-  /**
-   * Inicializa únicamente el catálogo local (código, nombre, precio).
-   * Los mismos códigos deben existir en inventario-service.
-   */
-  private void inicializarProductosSiEsNecesario() {
-    Long cantidad = entityManager
-        .createQuery(
-            """
-            select count(p)
-            from Producto p
-            """,
-            Long.class
-        )
-        .getSingleResult();
-
-    if (cantidad == 0) {
-      entityManager.persist(new Producto("LAP-001", "Laptop", new BigDecimal("2500.00")));
-      entityManager.persist(new Producto("MON-001", "Monitor", new BigDecimal("850.00")));
-      entityManager.persist(new Producto("TEC-001", "Teclado", new BigDecimal("120.00")));
+  private void validarReserva(ReservaStockResponse reserva) {
+    if (reserva == null
+        || reserva.getCodigo() == null
+        || reserva.getCodigo().isBlank()
+        || reserva.getNombre() == null
+        || reserva.getNombre().isBlank()
+        || reserva.getPrecio() == null) {
+      throw new PedidoException(
+          "inventario-service devolvió una respuesta incompleta para registrar el pedido."
+      );
     }
   }
 }
