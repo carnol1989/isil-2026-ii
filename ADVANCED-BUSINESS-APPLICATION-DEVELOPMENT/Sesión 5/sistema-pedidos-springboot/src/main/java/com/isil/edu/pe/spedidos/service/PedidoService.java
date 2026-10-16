@@ -83,11 +83,7 @@ public interface PedidoService {
    * @throws PedidoException si los datos son inválidos o la reserva
    *         de inventario no puede completarse correctamente
    */
-  Pedido registrarPedido(
-      String cliente,
-      String productoCodigo,
-      int cantidad
-  );
+  Pedido registrarPedido(String cliente, String productoCodigo, int cantidad);
 
   /**
    * Obtiene los productos disponibles desde el servicio externo
