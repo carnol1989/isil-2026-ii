@@ -1,12 +1,14 @@
 package com.isil.edu.pe.spedidos.controller;
 
 import com.isil.edu.pe.spedidos.controller.dto.PedidoResponse;
+import com.isil.edu.pe.spedidos.entity.Pedido;
 import com.isil.edu.pe.spedidos.service.PedidoService;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -69,11 +71,20 @@ public class PedidoApiController {
         .toList();
   }
 
-  @GetMapping("/resumen")
+  @GetMapping(value = "/resumen", produces = MediaType.APPLICATION_JSON_VALUE)
   public Map<String, Object> resumenPedidos() {
-      Map<String, Object> resumen = new HashMap<>();
-      resumen.put("modulo", "Sistema de Pedidos");
-      resumen.put("totalPedidos", pedidoService.listarPedidos().size());
-      return resumen;
+    List<Pedido> pedidos = pedidoService.listarPedidos();
+
+    int totalUnidades = pedidos.stream()
+        .mapToInt(Pedido::getCantidad)
+        .sum();
+
+    Map<String, Object> resumen = new HashMap<>();
+
+    resumen.put("modulo", "Sistema de Pedidos");
+    resumen.put("totalPedidos", pedidos.size());
+    resumen.put("totalUnidades", totalUnidades);
+
+    return resumen;
   }
 }

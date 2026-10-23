@@ -88,4 +88,31 @@ class PedidoApiControllerTest {
         .andExpect(jsonPath("$.totalPedidos").value(2));
   }
 
+  @Test
+  @DisplayName("Return total units of five from PedidoApiController when quantities are two and three")
+  void returnTotalUnitsOfFiveFromPedidoApiControllerWhenQuantitiesAreTwoAndThree()
+      throws Exception {
+
+    // Arrange
+    Pedido first = new Pedido();
+    first.setCantidad(2);
+
+    Pedido second = new Pedido();
+    second.setCantidad(3);
+
+    when(pedidoService.listarPedidos())
+        .thenReturn(List.of(first, second));
+
+    // Act
+    ResultActions response = mockMvc.perform(
+        get("/api/v1/orders/resumen")
+    );
+
+    // Assert
+    response
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.totalPedidos").value(2))
+        .andExpect(jsonPath("$.totalUnidades").value(5));
+  }
+
 }

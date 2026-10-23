@@ -22,6 +22,11 @@
                 El catálogo, precio y stock provienen de inventario-service; H2 conserva los pedidos durante la ejecución.
             </p>
         </div>
+        <c:url var="logoutUrl" value="/logout"/>
+        <form method="post" action="${logoutUrl}">
+            <input type="hidden" name="${_csrf.parameterName}" value="${_csrf.token}">
+            <button type="submit">Cerrar sesión</button>
+        </form>
         <div class="flujo">
             DispatcherServlet → Controller → Service → RestClient → inventario-service · Pedido → H2
         </div>
@@ -45,6 +50,11 @@
         <c:url var="pedidosUrl" value="/pedidos"/>
 
         <form method="post" action="${pedidosUrl}" class="form-grid">
+            <!-- Token CSRF -->
+            <input type="hidden"
+                   name="${_csrf.parameterName}"
+                   value="${_csrf.token}">
+
             <label>
                 Cliente
                 <input
