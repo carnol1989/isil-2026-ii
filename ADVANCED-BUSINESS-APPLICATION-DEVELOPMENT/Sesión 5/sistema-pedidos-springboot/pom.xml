@@ -55,6 +55,12 @@
 			<artifactId>spring-boot-starter-webmvc</artifactId>
 		</dependency>
 
+        <!-- Spring HATEOAS -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-hateoas</artifactId>
+        </dependency>
+
 		<!-- ===================================== -->
 		<!-- 2. INTEGRACIÓN HTTP                   -->
 		<!-- Jakarta REST Client -> RestClient     -->
@@ -82,11 +88,19 @@
 		<!-- 4. BASE DE DATOS                      -->
 		<!-- Histórico local del Sistema Pedidos   -->
 		<!-- ===================================== -->
-		<dependency>
-			<groupId>com.h2database</groupId>
-			<artifactId>h2</artifactId>
-			<scope>runtime</scope>
-		</dependency>
+        <!-- MySQL: ejecución normal -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- H2: pruebas -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
 
 		<!-- ===================================== -->
 		<!-- 5. H2 CONSOLE                         -->

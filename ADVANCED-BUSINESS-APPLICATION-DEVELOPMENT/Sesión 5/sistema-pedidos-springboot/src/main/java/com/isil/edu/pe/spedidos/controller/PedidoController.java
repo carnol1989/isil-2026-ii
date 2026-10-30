@@ -17,83 +17,35 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 /**
- * Controlador Spring MVC encargado de atender las solicitudes web
- * relacionadas con la gestión de pedidos.
+ * Controlador de presentación para la consulta y el registro de pedidos mediante Spring MVC.
  *
- * <p>Esta clase pertenece a la capa de presentación de la aplicación.
- * Su responsabilidad principal es recibir solicitudes HTTP,
- * obtener los datos enviados por el usuario, delegar la lógica de
- * negocio en {@link PedidoService} y seleccionar la vista que debe
- * mostrarse como respuesta.</p>
+ * <p><strong>Responsabilidad:</strong> atender formularios web bajo la ruta
+ * {@code /pedidos}, coordinar la interacción con {@link PedidoService} y devolver
+ * nombres lógicos de vistas. Al utilizar {@link Controller @Controller}, este
+ * componente renderiza vistas; no es el controlador REST de reportes.</p>
  *
- * <p>La anotación {@link Controller @Controller} indica a Spring que
- * esta clase debe registrarse como un componente de la capa web y que
- * sus métodos pueden participar en el procesamiento de solicitudes
- * HTTP mediante Spring MVC.</p>
- *
- * <p>La anotación:</p>
- *
+ * <p><strong>Arquitectura y separación de responsabilidades:</strong></p>
  * <pre>
- * &#64;RequestMapping("/pedidos")
+ * Navegador --HTTP--&gt; DispatcherServlet --&gt; PedidoController
+ *                                              |
+ *                                              v
+ *                                         PedidoService
+ *                                          /        \
+ *                                         v          v
+ *                                 PedidoRepository  InventarioClient
+ *                                         |          |
+ *                                   MySQL / H2   inventario-service
  * </pre>
+ * <p>MySQL corresponde a la ejecución normal y H2 al perfil de pruebas.
+ * El controlador no conoce el mecanismo de persistencia ni implementa
+ * directamente la integración con Inventario: delega ambas tareas al servicio.</p>
  *
- * <p>define la ruta base atendida por este controlador. Por ejemplo:</p>
- *
- * <pre>
- * GET  /pedidos
- * POST /pedidos
- * </pre>
- *
- * <p>Dentro de la arquitectura de la aplicación, este controlador
- * ocupa la siguiente posición:</p>
- *
- * <pre>
- * Navegador
- *     |
- *     | HTTP
- *     v
- * DispatcherServlet
- *     |
- *     v
- * PedidoController
- *     |
- *     | Constructor Injection
- *     v
- * PedidoService
- *     |
- *     +----------------------+
- *     |                      |
- *     v                      v
- * PedidoRepository      InventarioClient
- *     |                      |
- *     v                      v
- *    H2              inventario-service
- * </pre>
- *
- * <p>Es importante observar que el controlador no contiene la lógica
- * principal para registrar pedidos ni conoce directamente cómo se
- * accede a la base de datos o cómo se consume el servicio de
- * Inventario. Estas responsabilidades se delegan a otras capas.</p>
- *
- * <p>La clase también traduce diferentes situaciones de la aplicación
- * a respuestas HTTP apropiadas:</p>
- *
- * <ul>
- *   <li>
- *     {@code 200 OK}: la operación se procesa normalmente.
- *   </li>
- *   <li>
- *     {@code 400 Bad Request}: existen datos ingresados incorrectamente.
- *   </li>
- *   <li>
- *     {@code 503 Service Unavailable}: el servicio externo de Inventario
- *     no se encuentra disponible.
- *   </li>
- *   <li>
- *     {@code 500 Internal Server Error}: ocurre un error interno no
- *     controlado específicamente.
- *   </li>
- * </ul>
+ * <p><strong>Contratos web:</strong> {@code GET /pedidos} presenta el formulario
+ * y la lista; {@code POST /pedidos} registra un pedido y, si tiene éxito,
+ * aplica Post/Redirect/Get (PRG). Los errores de datos o negocio generan
+ * {@code 400}; la indisponibilidad del inventario, {@code 503}; y los errores
+ * inesperados, {@code 500}. Las solicitudes satisfactorias de listado
+ * generan normalmente {@code 200}.</p>
  *
  * @see PedidoService
  * @see Pedido
@@ -107,114 +59,49 @@ public class PedidoController {
   private static final Logger log = LoggerFactory.getLogger(PedidoController.class);
 
   /**
-   * Servicio que contiene las operaciones de negocio relacionadas
-   * con los pedidos.
+   * Dependencia de la capa de negocio declarada mediante su contrato.
    *
-   * <p>El controlador depende de la interfaz {@link PedidoService}
-   * y no de una implementación concreta, favoreciendo el desacoplamiento.</p>
+   * <p>La referencia es {@code final}: se asigna en la construcción y no se
+   * sustituye durante la vida del controlador. Esto favorece el principio
+   * de inversión de dependencias y facilita el uso de dobles de prueba.</p>
    */
   private final PedidoService pedidoService;
 
   /**
-   * Construye el controlador utilizando el servicio de pedidos
-   * proporcionado por el contenedor IoC de Spring.
+   * Crea el controlador mediante inyección de dependencias por constructor.
    *
-   * <p>Este constructor representa un ejemplo de
-   * <strong>Constructor Injection</strong>.</p>
+   * <p>Spring suministra un bean compatible con {@link PedidoService}; el
+   * controlador no instancia la implementación. Como existe un único
+   * constructor, no se requiere {@code @Autowired}. Este diseño facilita
+   * las pruebas unitarias con Mockito y mantiene desacopladas las capas.</p>
    *
-   * <p>El controlador no crea directamente el servicio utilizando:</p>
-   *
-   * <pre>
-   * new PedidoServiceImpl(...)
-   * </pre>
-   *
-   * <p>En cambio, declara la dependencia que necesita:</p>
-   *
-   * <pre>
-   * PedidoController(PedidoService pedidoService)
-   * </pre>
-   *
-   * <p>Spring localiza un bean que implemente {@link PedidoService}
-   * y lo proporciona cuando crea el {@code PedidoController}.</p>
-   *
-   * <p>Conceptualmente:</p>
-   *
-   * <pre>
-   * Spring IoC Container
-   *         |
-   *         v
-   * PedidoServiceImpl
-   *         |
-   *         | inyección
-   *         v
-   * PedidoController
-   * </pre>
-   *
-   * <p>Como la clase posee un único constructor, no es necesario
-   * utilizar {@code @Autowired}.</p>
-   *
-   * @param pedidoService servicio utilizado para ejecutar las
-   *                      operaciones de negocio de pedidos
+   * @param pedidoService servicio que coordina las operaciones de pedidos
    */
   public PedidoController(PedidoService pedidoService) {
     this.pedidoService = pedidoService;
   }
 
   /**
-   * Atiende las solicitudes HTTP GET dirigidas a {@code /pedidos}
-   * y prepara la información necesaria para mostrar la pantalla
-   * principal de pedidos.
+   * Presenta la página principal de pedidos para una solicitud HTTP GET.
    *
-   * <p>La anotación {@link GetMapping @GetMapping} vincula este
-   * método con una solicitud:</p>
+   * <p><strong>Ruta:</strong> {@code GET /pedidos}. Mediante
+   * {@link #cargarDatosVista(Model)}, incorpora al {@link Model} los atributos
+   * {@code productos} y {@code pedidos}, utilizados por la vista JSP.</p>
    *
-   * <pre>
-   * GET /pedidos
-   * </pre>
+   * <p><strong>Resultado:</strong> retorna {@code pedidos}, un nombre lógico
+   * de vista que Spring MVC resuelve con el mecanismo configurado. Si el
+   * servicio de Inventario falla, devuelve la vista {@code error} con estado
+   * {@code 503}; ante otra excepción de ejecución registra el incidente y
+   * devuelve esa vista con estado {@code 500}.</p>
    *
-   * <p>El método carga en el {@link Model} la información requerida
-   * por la vista, principalmente:</p>
+   * <p><strong>Concepto pedagógico:</strong> un método de {@code @Controller}
+   * que retorna {@link String} no envía necesariamente ese texto al cliente:
+   * en este caso indica qué vista debe renderizarse.</p>
    *
-   * <ul>
-   *   <li>Productos disponibles en Inventario.</li>
-   *   <li>Pedidos registrados en el sistema.</li>
-   * </ul>
-   *
-   * <p>Si la operación se realiza correctamente, retorna:</p>
-   *
-   * <pre>
-   * "pedidos"
-   * </pre>
-   *
-   * <p>Spring MVC interpreta este valor como el nombre lógico de
-   * la vista que debe renderizarse.</p>
-   *
-   * <p>Por ejemplo, si la configuración contiene:</p>
-   *
-   * <pre>
-   * spring.mvc.view.prefix=/WEB-INF/views/
-   * spring.mvc.view.suffix=.jsp
-   * </pre>
-   *
-   * <p>el nombre lógico {@code pedidos} puede resolverse como:</p>
-   *
-   * <pre>
-   * /WEB-INF/views/pedidos.jsp
-   * </pre>
-   *
-   * <p>Si {@code inventario-service} no se encuentra disponible,
-   * la respuesta se transforma en un error HTTP
-   * {@code 503 Service Unavailable}.</p>
-   *
-   * <p>Cualquier otro error de ejecución no tratado específicamente
-   * se transforma en un error HTTP
-   * {@code 500 Internal Server Error}.</p>
-   *
-   * @param model objeto utilizado para transportar información desde
-   *              el Controller hacia la vista
-   * @param response respuesta HTTP utilizada para establecer códigos
-   *                 de estado cuando ocurre un error
-   * @return nombre lógico de la vista que debe renderizar Spring MVC
+   * @param model contenedor de atributos enviados desde el controlador a la vista
+   * @param response respuesta HTTP cuyo estado se ajusta si ocurre un error
+   * @return {@code pedidos} cuando la carga es satisfactoria; {@code error} si falla
+   * @see GetMapping
    */
   @GetMapping
   public String listar(Model model, HttpServletResponse response) {
@@ -230,112 +117,33 @@ public class PedidoController {
   }
 
   /**
-   * Atiende las solicitudes HTTP POST utilizadas para registrar
-   * un nuevo pedido.
+   * Procesa el formulario de creación de pedidos mediante HTTP POST.
    *
-   * <p>La anotación {@link PostMapping @PostMapping} vincula este
-   * método con:</p>
+   * <p><strong>Ruta:</strong> {@code POST /pedidos}. Recibe los campos
+   * {@code cliente}, {@code productoCodigo} y {@code cantidad} con
+   * {@link RequestParam @RequestParam}. Convierte la cantidad de texto a
+   * entero y delega el registro en {@link PedidoService#registrarPedido}.</p>
    *
-   * <pre>
-   * POST /pedidos
-   * </pre>
+   * <p><strong>Flujo exitoso (PRG):</strong> agrega el identificador del pedido
+   * creado a {@link RedirectAttributes} bajo la clave {@code creado} y
+   * retorna {@code redirect:/pedidos}. El navegador realiza entonces una
+   * solicitud GET, reduciendo los reenvíos accidentales del formulario.</p>
    *
-   * <p>Los parámetros enviados desde el formulario HTML son recibidos
-   * mediante {@link RequestParam @RequestParam}:</p>
+   * <p><strong>Errores:</strong> una cantidad no numérica o una
+   * {@link PedidoException} producen {@code 400} y conservan los campos
+   * ingresados; una {@link InventarioNoDisponibleException} produce
+   * {@code 503}; otros fallos de ejecución se registran y producen
+   * {@code 500}. En los casos de error no se aplica la redirección PRG.</p>
    *
-   * <pre>
-   * cliente
-   * productoCodigo
-   * cantidad
-   * </pre>
-   *
-   * <p>La secuencia principal de procesamiento es:</p>
-   *
-   * <pre>
-   * Formulario HTML
-   *      |
-   *      | POST /pedidos
-   *      v
-   * PedidoController.registrar(...)
-   *      |
-   *      | convierte cantidad String -> int
-   *      v
-   * PedidoService.registrarPedido(...)
-   *      |
-   *      v
-   * Pedido registrado
-   *      |
-   *      | redirect
-   *      v
-   * GET /pedidos
-   * </pre>
-   *
-   * <p>Después de registrar correctamente el pedido se utiliza el
-   * patrón <strong>Post/Redirect/Get (PRG)</strong>.</p>
-   *
-   * <p>En lugar de devolver directamente la vista luego del POST,
-   * se retorna:</p>
-   *
-   * <pre>
-   * redirect:/pedidos
-   * </pre>
-   *
-   * <p>Esto provoca una nueva solicitud GET y evita que al actualizar
-   * el navegador se vuelva a enviar accidentalmente el formulario.</p>
-   *
-   * <p>Además, mediante {@link RedirectAttributes} se incorpora el
-   * identificador del pedido creado como parámetro de la redirección.</p>
-   *
-   * <p>Ejemplo conceptual:</p>
-   *
-   * <pre>
-   * POST /pedidos
-   *
-   *       |
-   *       v
-   *
-   * Pedido creado: id = 15
-   *
-   *       |
-   *       v
-   *
-   * redirect:/pedidos?creado=15
-   *
-   *       |
-   *       v
-   *
-   * GET /pedidos?creado=15
-   * </pre>
-   *
-   * <p>El método diferencia distintos tipos de error:</p>
-   *
-   * <ul>
-   *   <li>
-   *     {@link NumberFormatException}: la cantidad no puede convertirse
-   *     a un número entero.
-   *   </li>
-   *   <li>
-   *     {@link PedidoException}: se incumple una regla de negocio.
-   *   </li>
-   *   <li>
-   *     {@link InventarioNoDisponibleException}: el servicio remoto
-   *     de Inventario no está disponible.
-   *   </li>
-   *   <li>
-   *     {@link RuntimeException}: ocurre un error interno no contemplado
-   *     específicamente.
-   *   </li>
-   * </ul>
-   *
-   * @param cliente nombre del cliente enviado desde el formulario
+   * @param cliente nombre del cliente recibido desde el formulario
    * @param productoCodigo código del producto seleccionado
-   * @param cantidad cantidad solicitada recibida inicialmente como texto
-   * @param model modelo utilizado para enviar información a la vista
-   * @param response respuesta HTTP utilizada para establecer códigos
-   *                 de estado
-   * @param redirectAttributes atributos utilizados durante la redirección
-   *                           posterior al registro exitoso
-   * @return nombre lógico de la vista o instrucción de redirección
+   * @param cantidad cantidad solicitada como texto, previa a su conversión
+   * @param model atributos utilizados para volver a mostrar el formulario o error
+   * @param response respuesta HTTP utilizada para establecer el estado de error
+   * @param redirectAttributes parámetros transportados a la solicitud GET posterior
+   * @return {@code redirect:/pedidos} si se registra; {@code pedidos} o
+   *         {@code error} cuando debe presentarse un fallo
+   * @see PostMapping
    */
   @PostMapping
   public String registrar(@RequestParam String cliente, @RequestParam String productoCodigo,
@@ -364,34 +172,18 @@ public class PedidoController {
   }
 
   /**
-   * Carga en el {@link Model} los datos requeridos para renderizar
-   * la vista principal de pedidos.
+   * Reúne los datos comunes necesarios para renderizar la vista de pedidos.
    *
-   * <p>Este método centraliza una operación que debe ejecutarse en
-   * diferentes escenarios del Controller, evitando duplicar código.</p>
+   * <p>Agrega {@code productos}, obtenidos del servicio de Inventario a través
+   * de la capa de negocio, y {@code pedidos}, procedentes de la consulta de
+   * pedidos. Centralizar esta preparación evita duplicación entre el listado
+   * inicial y la redistribución del formulario después de un error.</p>
    *
-   * <p>Se agregan dos atributos al modelo:</p>
+   * <p>La consulta se delega en {@link PedidoService}; el controlador no
+   * ejecuta consultas SQL ni invoca directamente al cliente HTTP externo.</p>
    *
-   * <pre>
-   * "productos"
-   * "pedidos"
-   * </pre>
-   *
-   * <p>Posteriormente, una vista JSP puede acceder a ellos mediante
-   * Expression Language:</p>
-   *
-   * <pre>
-   * ${productos}
-   * ${pedidos}
-   * </pre>
-   *
-   * <p>El Controller no obtiene directamente los datos desde la base
-   * de datos ni realiza llamadas HTTP hacia Inventario. Ambas
-   * operaciones son delegadas a {@link PedidoService}.</p>
-   *
-   * @param model modelo al que se incorporarán los productos y pedidos
-   * @throws InventarioNoDisponibleException si no es posible consultar
-   *         los productos desde {@code inventario-service}
+   * @param model modelo al que se agregan {@code productos} y {@code pedidos}
+   * @throws InventarioNoDisponibleException si falla la consulta al inventario
    */
   private void cargarDatosVista(Model model) {
     model.addAttribute("productos", pedidoService.listarProductos());
@@ -399,53 +191,27 @@ public class PedidoController {
   }
 
   /**
-   * Prepara la respuesta que debe mostrarse cuando la solicitud
-   * contiene un error de negocio o de validación.
+   * Reconstruye el formulario cuando los datos son inválidos o se incumple
+   * una regla de negocio.
    *
-   * <p>Este método establece el estado HTTP:</p>
+   * <p>Establece {@code 400 Bad Request} y conserva el contexto ingresado en
+   * {@code clienteIngresado}, {@code productoCodigoIngresado} y
+   * {@code cantidadIngresada}; el mensaje se expone bajo {@code error}.
+   * Luego vuelve a cargar productos y pedidos para presentar {@code pedidos}.</p>
    *
-   * <pre>
-   * 400 Bad Request
-   * </pre>
+   * <p>Si falla Inventario durante la recarga, prevalece la indisponibilidad
+   * de la dependencia: se devuelve {@code error} con {@code 503}.</p>
    *
-   * <p>El código {@code 400} indica que la solicitud no puede
-   * procesarse correctamente debido a los datos proporcionados
-   * por el cliente.</p>
-   *
-   * <p>Además, conserva los valores previamente ingresados por
-   * el usuario para que puedan volver a mostrarse en el formulario:</p>
-   *
-   * <pre>
-   * clienteIngresado
-   * productoCodigoIngresado
-   * cantidadIngresada
-   * error
-   * </pre>
-   *
-   * <p>Después intenta recargar los productos y pedidos necesarios
-   * para volver a mostrar la vista {@code pedidos}.</p>
-   *
-   * <p>Si durante esa recarga el servicio de Inventario deja de estar
-   * disponible, el flujo cambia a la vista general de error mediante
-   * {@link #mostrarServicioNoDisponible(Model, HttpServletResponse, String)}.</p>
-   *
-   * @param model modelo utilizado para reenviar información a la vista
-   * @param response respuesta HTTP cuyo código será establecido en 400
-   * @param cliente valor del cliente previamente ingresado
-   * @param productoCodigo código del producto previamente seleccionado
-   * @param cantidad cantidad previamente ingresada
-   * @param mensaje descripción del error que será mostrado al usuario
-   * @return vista {@code pedidos} o vista de error si Inventario
-   *         no se encuentra disponible
+   * @param model modelo que recibe valores previos y mensaje de validación
+   * @param response respuesta cuyo estado se establece en {@code 400} o {@code 503}
+   * @param cliente nombre del cliente ingresado
+   * @param productoCodigo código del producto ingresado
+   * @param cantidad cantidad ingresada originalmente como texto
+   * @param mensaje explicación del error que se mostrará al usuario
+   * @return {@code pedidos} o, si falla Inventario, {@code error}
    */
-  private String mostrarErrorNegocio(
-      Model model,
-      HttpServletResponse response,
-      String cliente,
-      String productoCodigo,
-      String cantidad,
-      String mensaje
-  ) {
+  private String mostrarErrorNegocio(Model model, HttpServletResponse response, String cliente,
+      String productoCodigo, String cantidad, String mensaje) {
     response.setStatus(HttpStatus.BAD_REQUEST.value());
 
     model.addAttribute("clienteIngresado", cliente);
@@ -462,37 +228,16 @@ public class PedidoController {
   }
 
   /**
-   * Construye la respuesta utilizada cuando el servicio externo
-   * de Inventario no se encuentra disponible.
+   * Presenta un error de dependencia externa cuando Inventario no responde.
    *
-   * <p>Establece el estado HTTP:</p>
+   * <p>Establece {@code 503 Service Unavailable}, incorpora el texto recibido
+   * en el atributo {@code error} y selecciona la vista lógica {@code error}.
+   * Es un ejemplo de traducción de una excepción de integración a un estado
+   * HTTP comprensible para el consumidor de la aplicación.</p>
    *
-   * <pre>
-   * 503 Service Unavailable
-   * </pre>
-   *
-   * <p>Este código es apropiado cuando la aplicación recibió la
-   * solicitud correctamente, pero temporalmente no puede completar
-   * la operación debido a la indisponibilidad de un servicio del
-   * cual depende.</p>
-   *
-   * <p>En este proyecto puede ocurrir, por ejemplo, cuando:</p>
-   *
-   * <ul>
-   *   <li>{@code inventario-service} está detenido.</li>
-   *   <li>WildFly no está iniciado.</li>
-   *   <li>El puerto de Inventario no responde.</li>
-   *   <li>Se supera el timeout de conexión.</li>
-   *   <li>Se supera el timeout de lectura.</li>
-   * </ul>
-   *
-   * <p>El mensaje recibido se agrega al {@link Model} con la clave
-   * {@code error} y posteriormente se renderiza la vista
-   * {@code error}.</p>
-   *
-   * @param model modelo utilizado para transportar el mensaje de error
-   * @param response respuesta HTTP cuyo estado será establecido en 503
-   * @param mensaje descripción de la indisponibilidad del servicio
+   * @param model modelo que transporta el mensaje de indisponibilidad
+   * @param response respuesta HTTP cuyo estado se establece en {@code 503}
+   * @param mensaje descripción del fallo de disponibilidad
    * @return nombre lógico de la vista {@code error}
    */
   private String mostrarServicioNoDisponible(
@@ -506,32 +251,15 @@ public class PedidoController {
   }
 
   /**
-   * Construye una respuesta genérica para errores internos que no
-   * han sido tratados específicamente por el Controller.
+   * Presenta una respuesta genérica ante errores de ejecución inesperados.
    *
-   * <p>El método establece el estado HTTP:</p>
+   * <p>Establece {@code 500 Internal Server Error} y utiliza un mensaje
+   * neutral en la vista {@code error}. La excepción original se registra
+   * en los puntos de captura, pero sus detalles técnicos no se exponen en
+   * la interfaz, reduciendo la divulgación accidental de información interna.</p>
    *
-   * <pre>
-   * 500 Internal Server Error
-   * </pre>
-   *
-   * <p>El código {@code 500} representa una condición inesperada
-   * ocurrida dentro de la aplicación mientras se procesaba la
-   * solicitud.</p>
-   *
-   * <p>No se muestra directamente al usuario el mensaje técnico de
-   * la excepción original. En su lugar, se proporciona un mensaje
-   * genérico:</p>
-   *
-   * <pre>
-   * Ocurrió un error interno al procesar la solicitud.
-   * </pre>
-   *
-   * <p>Esta práctica evita exponer innecesariamente detalles internos
-   * de implementación al cliente.</p>
-   *
-   * @param model modelo utilizado para transportar el mensaje de error
-   * @param response respuesta HTTP cuyo estado será establecido en 500
+   * @param model modelo que transporta el mensaje seguro para el usuario
+   * @param response respuesta HTTP cuyo estado se establece en {@code 500}
    * @return nombre lógico de la vista {@code error}
    */
   private String mostrarErrorGeneral(Model model, HttpServletResponse response) {

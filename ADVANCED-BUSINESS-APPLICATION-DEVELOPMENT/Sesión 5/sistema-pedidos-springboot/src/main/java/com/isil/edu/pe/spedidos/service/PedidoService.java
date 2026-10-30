@@ -7,104 +7,193 @@ import com.isil.edu.pe.spedidos.service.impl.PedidoServiceImpl;
 import java.util.List;
 
 /**
- * Define el contrato de operaciones de negocio relacionadas con los pedidos.
+ * Define el contrato de la capa de servicio para las operaciones de negocio
+ * relacionadas con la gestión de pedidos.
  *
- * <p>Esta interfaz representa la capa de servicio del Sistema de Pedidos.
- * Declara las operaciones que pueden ser utilizadas por otras capas de la
- * aplicación, principalmente por los controladores, sin exponer los detalles
- * internos de su implementación.</p>
+ * <p>Esta interfaz representa la <strong>capa de servicio</strong> dentro de la
+ * arquitectura de la aplicación. Su responsabilidad es exponer las operaciones
+ * que pueden ser utilizadas por la capa de presentación, sin revelar cómo se
+ * implementan internamente las reglas de negocio, el acceso a datos o la
+ * comunicación con servicios externos.</p>
  *
- * <p>La separación entre interfaz e implementación permite que una clase
- * consumidora dependa de una abstracción:</p>
+ * <p>Desde una perspectiva arquitectónica, {@code PedidoService} actúa como una
+ * frontera entre el Controller y las dependencias técnicas del sistema:</p>
  *
  * <pre>
  * PedidoController
- *       |
- *       v
- * PedidoService              &lt;- contrato
- *       ^
- *       |
- *       |
- * PedidoServiceImpl          &lt;- implementación
- *       |
- *       +-- PedidoRepository
- *       |
- *       +-- InventarioClient
+ *        |
+ *        | utiliza
+ *        v
+ * PedidoService                 &lt;- contrato / abstracción
+ *        ^
+ *        |
+ *        | implementa
+ *        |
+ * PedidoServiceImpl             &lt;- implementación
+ *        |
+ *        +-----------------------------+
+ *        |                             |
+ *        v                             v
+ * PedidoRepository               InventarioClient
+ *        |                             |
+ *        v                             v
+ * MySQL / H2                  inventario-service
  * </pre>
  *
- * <p>Desde la perspectiva de Inyección de Dependencias, Spring puede
- * proporcionar automáticamente una implementación de {@code PedidoService}
- * cuando una clase declare esta interfaz como dependencia.</p>
+ * <p>En la ejecución normal de la aplicación, la persistencia se realiza sobre
+ * MySQL. Durante las pruebas de integración se utiliza H2 mediante el perfil
+ * {@code test}, evitando que las pruebas dependan de una instancia MySQL
+ * disponible.</p>
  *
- * <p>Esta separación facilita:</p>
+ * <p>El uso de una interfaz permite aplicar principios importantes de diseño:</p>
  *
  * <ul>
- *   <li>Reducir el acoplamiento entre el Controller y la implementación.</li>
- *   <li>Sustituir implementaciones sin modificar las clases consumidoras.</li>
- *   <li>Crear mocks o stubs durante las pruebas unitarias.</li>
- *   <li>Mantener claramente definido el contrato de la capa de negocio.</li>
+ *   <li>
+ *     <strong>Abstracción:</strong> las clases consumidoras conocen qué
+ *     operaciones están disponibles, pero no necesitan conocer su implementación.
+ *   </li>
+ *   <li>
+ *     <strong>Inversión de dependencias:</strong> el Controller depende del
+ *     contrato {@code PedidoService} y no directamente de
+ *     {@link PedidoServiceImpl}.
+ *   </li>
+ *   <li>
+ *     <strong>Bajo acoplamiento:</strong> la implementación puede evolucionar
+ *     sin obligar a modificar las clases que consumen el servicio.
+ *   </li>
+ *   <li>
+ *     <strong>Testabilidad:</strong> durante las pruebas unitarias es posible
+ *     sustituir esta dependencia por mocks creados con Mockito.
+ *   </li>
  * </ul>
  *
+ * <p>Spring puede inyectar automáticamente una implementación de esta interfaz
+ * cuando una clase la declara como dependencia. En este proyecto, la
+ * implementación concreta corresponde a {@link PedidoServiceImpl}.</p>
+ *
+ * <p><strong>Nota pedagógica:</strong> la interfaz define el
+ * <em>qué</em> puede hacer la capa de servicio; la implementación define el
+ * <em>cómo</em> se ejecuta cada operación.</p>
+ *
+ * @author Carlos.Nole
  * @see PedidoServiceImpl
  * @see Pedido
  */
 public interface PedidoService {
 
   /**
-   * Registra un nuevo pedido en el sistema.
+   * Registra un nuevo pedido aplicando las reglas de negocio definidas por
+   * la aplicación.
    *
-   * <p>La operación valida los datos recibidos, solicita a
-   * {@code inventario-service} la reserva del stock, calcula el importe
-   * total del pedido y finalmente almacena el pedido en la base de datos
-   * local.</p>
+   * <p>Esta operación representa un caso de uso de negocio. El Controller
+   * entrega los datos recibidos desde la solicitud y la capa de servicio se
+   * encarga de coordinar las acciones necesarias para completar el registro.</p>
    *
-   * <p>Flujo conceptual:</p>
+   * <p>Conceptualmente, el flujo es el siguiente:</p>
    *
    * <pre>
-   * validar datos
-   *      |
-   *      v
-   * reservar stock
-   *      |
-   *      v
-   * calcular total
-   *      |
-   *      v
-   * crear Pedido
-   *      |
-   *      v
-   * guardar en H2
+   * validar datos de entrada
+   *          |
+   *          v
+   * consultar / reservar stock
+   *          |
+   *          v
+   * calcular importe del pedido
+   *          |
+   *          v
+   * construir entidad Pedido
+   *          |
+   *          v
+   * persistir el pedido
    * </pre>
    *
-   * @param cliente nombre del cliente que realiza el pedido
-   * @param productoCodigo código del producto seleccionado
-   * @param cantidad número de unidades solicitadas
-   * @return pedido registrado y persistido en la base de datos
-   * @throws PedidoException si los datos son inválidos o la reserva
-   *         de inventario no puede completarse correctamente
+   * <p>La persistencia se realiza en MySQL durante la ejecución normal de la
+   * aplicación. En las pruebas de integración, la misma operación puede
+   * ejecutarse sobre H2 utilizando el perfil {@code test}.</p>
+   *
+   * <p>La lógica concreta de validación, integración con Inventario y
+   * persistencia pertenece a la implementación del servicio. De esta manera,
+   * el Controller no necesita conocer esos detalles técnicos.</p>
+   *
+   * @param cliente nombre o identificación del cliente que realiza el pedido
+   * @param productoCodigo código del producto solicitado
+   * @param cantidad número de unidades que se desean registrar; debe cumplir
+   *                  las reglas de negocio definidas por la aplicación
+   * @return pedido creado y persistido satisfactoriamente
+   * @throws PedidoException si los datos incumplen una regla de negocio o la
+   *                         operación no puede completarse conforme a las
+   *                         condiciones definidas por el dominio
    */
   Pedido registrarPedido(String cliente, String productoCodigo, int cantidad);
 
   /**
-   * Obtiene los productos disponibles desde el servicio externo
+   * Obtiene la relación de productos disponibles desde el servicio externo
    * de Inventario.
    *
-   * <p>Esta operación delega la consulta en {@code InventarioClient},
-   * ocultando al Controller los detalles relacionados con HTTP,
-   * JSON y la ubicación de {@code inventario-service}.</p>
+   * <p>La capa de servicio abstrae al Controller de los detalles técnicos de
+   * integración. Por ello, quien invoca este método no necesita conocer cómo
+   * se construye la petición HTTP, qué URL utiliza el servicio remoto ni cómo
+   * se transforma la respuesta JSON.</p>
    *
-   * @return lista de productos obtenidos desde Inventario
+   * <p>Conceptualmente:</p>
+   *
+   * <pre>
+   * PedidoController
+   *        |
+   *        v
+   * PedidoService.listarProductos()
+   *        |
+   *        v
+   * InventarioClient
+   *        |
+   *        | HTTP
+   *        v
+   * inventario-service
+   * </pre>
+   *
+   * <p>El resultado se representa mediante
+   * {@link ProductoInventarioResponse}, que funciona como DTO de integración y
+   * evita exponer directamente detalles internos del servicio externo.</p>
+   *
+   * @return lista de productos obtenidos desde {@code inventario-service};
+   *         el contenido concreto depende de la respuesta proporcionada por
+   *         dicho servicio
    */
   List<ProductoInventarioResponse> listarProductos();
 
   /**
-   * Obtiene los pedidos almacenados en la base de datos local.
+   * Recupera los pedidos registrados en la base de datos de la aplicación.
    *
-   * <p>Los pedidos son recuperados mediante la capa Repository,
-   * manteniendo separados los detalles de persistencia de las
-   * capas superiores de la aplicación.</p>
+   * <p>Esta operación delega el acceso a datos en la capa Repository. La capa
+   * de servicio no debería construir directamente sentencias SQL ni administrar
+   * conexiones JDBC para este caso de uso.</p>
    *
-   * @return lista de pedidos registrados
+   * <p>El flujo conceptual es:</p>
+   *
+   * <pre>
+   * PedidoController
+   *        |
+   *        v
+   * PedidoService.listarPedidos()
+   *        |
+   *        v
+   * PedidoRepository
+   *        |
+   *        v
+   * Spring Data JPA / Hibernate
+   *        |
+   *        v
+   * MySQL / H2
+   * </pre>
+   *
+   * <p>En ejecución normal los datos se consultan desde MySQL. Durante las
+   * pruebas de integración, el perfil {@code test} permite realizar la misma
+   * operación utilizando H2.</p>
+   *
+   * <p>Esta separación mantiene a las capas superiores independientes de la
+   * tecnología de persistencia utilizada.</p>
+   *
+   * @return lista de pedidos registrados en el sistema
    */
   List<Pedido> listarPedidos();
 

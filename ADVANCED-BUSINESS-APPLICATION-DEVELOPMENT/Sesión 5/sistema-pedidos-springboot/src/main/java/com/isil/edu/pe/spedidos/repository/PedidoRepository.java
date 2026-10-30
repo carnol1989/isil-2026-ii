@@ -6,36 +6,28 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 /**
- * Repositorio de acceso a datos para la entidad {@link Pedido}.
+ * Contrato de persistencia para consultar y administrar entidades {@link Pedido}.
  *
- * <p>Esta interfaz representa la capa de persistencia del
- * Sistema de Pedidos. Su responsabilidad es proporcionar
- * operaciones para consultar y almacenar objetos
- * {@code Pedido} sin que la capa de negocio tenga que
- * trabajar directamente con {@code EntityManager},
- * JPQL o SQL.</p>
+ * <p>Esta interfaz pertenece a la <strong>capa de acceso a datos</strong> del Sistema
+ * de Pedidos. Su propósito es aislar a la capa de servicio de los detalles de
+ * persistencia, de modo que el negocio trabaje con operaciones del repositorio
+ * sin construir directamente consultas SQL o gestionar un {@code EntityManager}.</p>
  *
- * <p>Al extender de {@link JpaRepository}, Spring Data JPA
- * genera automáticamente una implementación en tiempo de
- * ejecución. Por este motivo, no es necesario crear una clase
- * concreta como {@code PedidoRepositoryImpl} para las
- * operaciones CRUD habituales.</p>
- *
- * <p>De forma conceptual, este repositorio permite realizar
- * operaciones como:</p>
- *
+ * <p>Extender {@link JpaRepository} permite aprovechar las operaciones CRUD
+ * proporcionadas por Spring Data JPA, como {@code save}, {@code findById},
+ * {@code findAll} y {@code deleteById}. Los parámetros genéricos indican:</p>
  * <ul>
- *   <li>Registrar un pedido.</li>
- *   <li>Buscar un pedido por su identificador.</li>
- *   <li>Listar todos los pedidos.</li>
- *   <li>Eliminar un pedido.</li>
- *   <li>Definir consultas derivadas mediante el nombre
- *       de los métodos.</li>
+ *   <li>{@code Pedido}: tipo de entidad persistida.</li>
+ *   <li>{@code Long}: tipo de dato del identificador de la entidad.</li>
  * </ul>
  *
- * <p>Dentro de la arquitectura de la aplicación, el flujo
- * esperado es:</p>
+ * <p>Spring Data JPA crea la implementación del repositorio durante la
+ * inicialización del contexto, por lo que no es necesario escribir una clase
+ * {@code PedidoRepositoryImpl} para las operaciones declaradas aquí. La anotación
+ * {@link Repository @Repository} expresa su función en la capa de persistencia;
+ * en interfaces Spring Data JPA normalmente no es obligatoria.</p>
  *
+ * <p><strong>Flujo arquitectónico:</strong></p>
  * <pre>
  * PedidoController
  *        |
@@ -48,12 +40,18 @@ import org.springframework.stereotype.Repository;
  *        v
  * Spring Data JPA / Hibernate
  *        |
- *        v
- * Base de datos H2
+ *        +-- MySQL (ejecución normal)
+ *        +-- H2 (perfil de pruebas de integración)
  * </pre>
  *
- * <p>Esta separación ayuda a mantener desacoplada la lógica
- * de negocio de los detalles técnicos de persistencia.</p>
+ * <p>La base de datos efectiva depende de la configuración del entorno: MySQL
+ * para la aplicación y H2 en memoria cuando se activa el perfil de pruebas.
+ * Este repositorio no selecciona ni configura el motor de base de datos.</p>
+ *
+ * <p><strong>Nota didáctica:</strong> Spring Data JPA y Spring JDBC son dos
+ * estrategias distintas de acceso a datos. Esta interfaz utiliza JPA; un
+ * repositorio basado en {@code JdbcTemplate} escribe explícitamente sus
+ * consultas SQL y el mapeo de filas.</p>
  *
  * @author Carlos.Nole
  * @see Pedido
@@ -63,29 +61,32 @@ import org.springframework.stereotype.Repository;
 public interface PedidoRepository extends JpaRepository<Pedido, Long> {
 
   /**
-   * Obtiene todos los pedidos registrados y los ordena
-   * de forma descendente por su identificador.
+   * Recupera todos los pedidos en orden descendente según su identificador.
    *
-   * <p>Spring Data JPA interpreta automáticamente el nombre
-   * del método y genera la consulta necesaria, por lo que no
-   * es necesario escribir JPQL ni SQL de forma explícita.</p>
+   * <p>Es un ejemplo de <strong>consulta derivada del nombre del método</strong>
+   * (query method). Spring Data JPA interpreta sus componentes:</p>
+   * <ul>
+   *   <li>{@code findAllBy}: solicita todos los registros, sin filtro adicional.</li>
+   *   <li>{@code OrderById}: utiliza el atributo {@code id} como criterio de orden.</li>
+   *   <li>{@code Desc}: establece el orden descendente.</li>
+   * </ul>
    *
-   * <p>La expresión {@code OrderByIdDesc} indica que los
-   * resultados deben ordenarse por el atributo {@code id}
-   * desde el valor más alto al más bajo. En este caso,
-   * normalmente permite mostrar primero los pedidos más
-   * recientes.</p>
-   *
-   * <p>Equivalencia conceptual aproximada:</p>
-   *
+   * <p>Su equivalente conceptual en JPQL sería:</p>
    * <pre>
-   * SELECT p
-   * FROM Pedido p
-   * ORDER BY p.id DESC
+   * SELECT p FROM Pedido p ORDER BY p.id DESC
    * </pre>
    *
-   * @return lista de pedidos ordenada por {@code id}
-   *         en orden descendente
+   * <p>El resultado es útil para mostrar primero los identificadores más altos.
+   * Sin embargo, un identificador mayor no demuestra necesariamente que el
+   * pedido sea más reciente; para un orden cronológico estricto se debe usar
+   * un atributo de fecha de creación.</p>
+   *
+   * <p><strong>Consideración de rendimiento:</strong> al retornar una lista
+   * completa, esta operación no aplica paginación. Si el volumen de pedidos
+   * aumenta, conviene evaluar {@code Pageable} y un resultado paginado.</p>
+   *
+   * @return lista de entidades {@link Pedido} ordenadas por {@code id} en orden
+   *         descendente; si no existen registros, devuelve una lista vacía
    */
   List<Pedido> findAllByOrderByIdDesc();
 

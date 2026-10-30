@@ -2,7 +2,7 @@
 
 > Proyecto académico evolutivo · **Desarrollo de Aplicaciones Empresariales Avanzado** · ISIL  
 > **Sesiones 7:** Spring MVC, seguridad web con Spring Security.
-> > **Sesiones 9:** Persistencia de reportes con Spring JDBC.
+> **Sesiones 9:** Persistencia de reportes con Spring JDBC.
 
 Aplicación empresarial de referencia para estudiar la migración de **Jakarta EE/WildFly a Spring Boot**, la separación de responsabilidades, la integración HTTP con `inventario-service` y la protección de una aplicación web con **autenticación, autorización y CSRF**.
 
@@ -70,7 +70,7 @@ El proyecto conserva una interfaz **Spring MVC + JSP** y expone una **API JSON**
 | Web | Spring MVC (`spring-boot-starter-webmvc`) |
 | Vista | JSP, JSTL y Tomcat Jasper; empaquetado **WAR** |
 | API | `@RestController`, DTO `PedidoResponse` y serialización JSON |
-| Persistencia | Spring Data JPA + Spring JDBC (`JdbcTemplate`, `NamedParameterJdbcTemplate`) sobre H2 en memoria |
+| Persistencia | Spring Data JPA + Spring JDBC (`JdbcTemplate`, `NamedParameterJdbcTemplate`); MySQL en ejecución normal y H2 en pruebas |
 | Integración | Spring `RestClient`, HTTP/JSON con `inventario-service` |
 | Seguridad (S07) | Spring Security, `SecurityFilterChain`, `formLogin`, `BCryptPasswordEncoder`, CSRF |
 | Pruebas | JUnit 5, Mockito, Spring Test, MockMvc y Spring Security Test |
@@ -113,7 +113,7 @@ Navegador / cliente HTTP
    Spring Data JPA                  (interfaz)
           |                               ^
           v                               | implementada por
-      H2 (local)                    InventarioRestClient
+      MySQL (local)                 InventarioRestClient
                                           |
                                     Spring RestClient
                                           |
@@ -130,7 +130,7 @@ Navegador / cliente HTTP
 - **Seguridad:** filtra solicitudes y aplica controles antes del procesamiento MVC cuando corresponde.
 - **Controladores:** reciben entradas HTTP, delegan al servicio y determinan la representación de salida.
 - **Servicio:** valida datos y coordina operaciones de pedido, persistencia e inventario.
-- **Repositorio:** encapsula el acceso a H2 con Spring Data JPA.
+- **Repositorio:** encapsula el acceso a la base configurada; MySQL se usa en la ejecución normal y H2 queda reservado para pruebas.
 - **Adaptador externo:** centraliza las llamadas HTTP mediante la abstracción `InventarioClient`.
 
 Los controladores reciben `PedidoService` por constructor; el servicio recibe `PedidoRepository` e `InventarioClient`. No es necesario crear estos colaboradores mediante `new` dentro de la lógica del proyecto.
@@ -159,7 +159,8 @@ sistema-pedidos-springboot/
     │   │   │   ├── dto/          # Modelos de servicio de reportes [S09]
     │   │   │   └── impl/         # Implementaciones de servicios
     │   │   └── SistemaPedidosSpringbootApplication.java
-    │   ├── resources/application.properties
+    │   ├── resources/application.properties   # MySQL
+    │   ├── test/resources/application-test.properties # H2 para pruebas
     │   └── webapp/
     │       ├── assets/css/app.css
     │       └── WEB-INF/views/
@@ -170,7 +171,7 @@ sistema-pedidos-springboot/
         ├── controller/
         │   ├── PedidoApiControllerTest.java        # Contrato JSON; standalone
         │   ├── PedidoSecurityIntegrationTest.java # Seguridad MVC; filtros [S07]
-        │   └── PedidoReporteControllerTest.java  # Contratos JSON de reportes [S09]
+        │   └── PedidoReporteControllerIntegrationTest.java # REST/HATEOAS + seguridad + H2 [S09]
         ├── repository/PedidoReporteJdbcRepositoryTest.java # Integración Spring JDBC/H2 [S09]
         └── service/impl/PedidoServiceImplTest.java
 ```
@@ -181,7 +182,7 @@ sistema-pedidos-springboot/
 |---|---|
 | `pom.xml` | Incorpora `spring-boot-starter-security` y `spring-boot-starter-security-test`. |
 | `config/SecurityConfig.java` **(nuevo)** | Define `SecurityFilterChain`, usuarios de prueba, roles y `BCryptPasswordEncoder`. |
-| `resources/application.properties` | Deshabilita H2 Console y permite sobreescribir contraseñas de laboratorio mediante variables de entorno. |
+| `resources/application.properties` | Configura MySQL para ejecución normal y externaliza credenciales mediante variables de entorno. |
 | `WEB-INF/views/pedidos.jsp` | Añade un campo oculto CSRF al POST y un formulario de cierre de sesión POST con CSRF. |
 | `controller/PedidoApiController.java` | Amplía `GET /api/v1/orders/resumen` con `totalUnidades`, calculado a partir de una sola consulta a pedidos. |
 | `controller/PedidoApiControllerTest.java` | Amplía los tests de respuesta JSON con el total de unidades. |
@@ -196,6 +197,7 @@ La configuración de seguridad **no incorpora** JWT, OAuth2/OIDC, usuarios persi
 
 - **JDK 21** instalado y configurado (`JAVA_HOME`).
 - **Maven 3.9.x** o el Maven Wrapper incluido.
+- **MySQL 8.x** disponible para la ejecución normal de la aplicación.
 - IDE compatible (por ejemplo, IntelliJ IDEA).
 - `inventario-service` ejecutándose en **`http://localhost:8082`** para las funciones que consultan o reservan productos.
 - Puerto **8081** disponible para el Sistema de Pedidos.
@@ -216,10 +218,12 @@ server.servlet.context-path=/sistema-pedidos
 spring.mvc.view.prefix=/WEB-INF/views/
 spring.mvc.view.suffix=.jsp
 
-spring.datasource.url=jdbc:h2:mem:pedidosdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
-spring.jpa.hibernate.ddl-auto=create-drop
+spring.datasource.url=${DB_URL:jdbc:mysql://localhost:3306/sistema_pedidos?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=America/Lima}
+spring.datasource.username=${DB_USERNAME:root}
+spring.datasource.password=${DB_PASSWORD:}
+spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
+spring.jpa.hibernate.ddl-auto=update
 spring.jpa.open-in-view=false
-spring.h2.console.enabled=false
 
 inventario.api.base-url=http://localhost:8082/inventario-service/api/inventario
 inventario.api.connect-timeout-ms=2000
@@ -256,7 +260,11 @@ En despliegues reales, eliminar los valores predeterminados y utilizar un provee
 
 Iniciar `inventario-service` en WildFly y verificar que está accesible en `http://localhost:8082`, con su propia base de datos/configuración externa.
 
-### 7.2 Compilar y ejecutar Sistema de Pedidos
+### 7.2 Preparar MySQL
+
+Crear la base `sistema_pedidos` y verificar las variables `DB_URL`, `DB_USERNAME` y `DB_PASSWORD`. H2 no se necesita para ejecutar la aplicación: queda restringido a la suite de pruebas.
+
+### 7.3 Compilar y ejecutar Sistema de Pedidos
 
 Desde la raíz de este repositorio, en **PowerShell**:
 
@@ -274,7 +282,7 @@ mvn spring-boot:run
 
 > `clean test` y `spring-boot:run` se ejecutan de forma secuencial; el segundo comando mantiene la aplicación iniciada hasta que se detiene el proceso.
 
-### 7.3 Acceder desde el navegador
+### 7.4 Acceder desde el navegador
 
 - Aplicación: <http://localhost:8081/sistema-pedidos/>
 - Pantalla de pedidos: <http://localhost:8081/sistema-pedidos/pedidos>
@@ -282,7 +290,7 @@ mvn spring-boot:run
 - API de pedidos: <http://localhost:8081/sistema-pedidos/api/v1/orders>
 - Resumen: <http://localhost:8081/sistema-pedidos/api/v1/orders/resumen>
 
-Primero se solicita autenticación. Luego, Spring Security aplica los permisos del usuario autenticado. **La consola H2 está deshabilitada** (`spring.h2.console.enabled=false`): la ruta `/h2-console` no es una interfaz utilizable en esta variante.
+Primero se solicita autenticación. Luego, Spring Security aplica los permisos del usuario autenticado. H2 no forma parte del runtime normal: su dependencia tiene alcance `test` y se activa únicamente mediante el perfil de pruebas.
 
 > La colección existente `postman/ISIL.postman_collection.json` procede de las prácticas de integración. Para utilizar sus solicitudes contra endpoints ahora protegidos, deben configurarse autenticación por sesión y, cuando corresponda, CSRF; no se incorporó HTTP Basic ni JWT a `SecurityConfig`.
 
@@ -297,9 +305,9 @@ Los mappings se escriben **sin** el contexto; en el navegador o cliente HTTP se 
 | POST | `/pedidos` | `PedidoController` | Registro y redirección (patrón POST/Redirect/GET) o error. |
 | GET | `/api/v1/orders` | `PedidoApiController` | Arreglo JSON de `PedidoResponse`. |
 | GET | `/api/v1/orders/resumen` | `PedidoApiController` | JSON de resumen con `modulo`, `totalPedidos`, `totalUnidades`. |
-| GET | `/api/v1/reportes/pedidos/resumen` | `PedidoReporteController` **[S09]** | Resumen agregado mediante `JdbcTemplate.queryForObject()`. |
-| GET | `/api/v1/reportes/pedidos/buscar?cliente=Ana` | `PedidoReporteController` **[S09]** | Búsqueda parametrizada mediante `NamedParameterJdbcTemplate`. |
-| GET | `/api/v1/reportes/pedidos/productos-mas-vendidos` | `PedidoReporteController` **[S09]** | Reporte agrupado mediante SQL explícito y `JdbcTemplate.query()`. |
+| GET | `/api/v1/pedidos/estadisticas/resumen` | `PedidoReporteController` **[S09]** | **RMM 2:** JSON, `GET` y `200 OK`; `JdbcTemplate.queryForObject()`. |
+| GET | `/api/v1/pedidos?cliente=Ana` | `PedidoReporteController` **[S09]** | **RMM 1:** arreglo JSON sin `_links`; filtro mediante `NamedParameterJdbcTemplate`. |
+| GET | `/api/v1/pedidos/estadisticas/productos` | `PedidoReporteController` **[S09]** | **RMM 3:** HAL/HATEOAS; agrupación mediante `JdbcTemplate.query()`. |
 | GET/POST | `/login` | Spring Security | Formulario de login y procesamiento de autenticación. |
 | POST | `/logout` | Spring Security | Cierre de sesión (requiere token CSRF válido). |
 
@@ -318,7 +326,7 @@ Accept: application/json
 }
 ```
 
-**Ejemplo ilustrativo:** `totalPedidos=2` y `totalUnidades=5` equivalen a dos pedidos cuyas cantidades suman cinco. Los datos reales dependen de los registros en H2.
+**Ejemplo ilustrativo:** `totalPedidos=2` y `totalUnidades=5` equivalen a dos pedidos cuyas cantidades suman cinco. En ejecución normal los datos provienen de MySQL; durante la suite de pruebas, de H2 en memoria.
 
 En `PedidoApiController`, el total se calcula a partir de una sola llamada al servicio:
 
@@ -354,7 +362,7 @@ Un **400 con un token CSRF válido** no significa que CSRF falló: puede indicar
 | GET `/api/v1/orders/resumen` | Login requerido | Permitido | Permitido |
 | POST `/pedidos` con CSRF válido | Login requerido | **403** | Permitido si cumple reglas de negocio |
 | POST `/pedidos` sin CSRF válido | Rechazado | **403** | **403** |
-| `/h2-console/**` | Sin acceso | Sin acceso | Sin acceso |
+| GET `/api/v1/pedidos/**` | Login requerido | Permitido | Permitido |
 
 La autenticación utiliza `formLogin` con **sesión HTTP**. Las reglas se definen en `SecurityConfig`, usando `SecurityFilterChain`. No se habilitó autenticación HTTP Basic ni validación de Bearer/JWT.
 
@@ -396,7 +404,7 @@ Ejecutar todos los tests:
 | `PedidoServiceImplTest` | Unitaria con Mockito | Comportamiento del servicio con colaboradores simulados. |
 | `PedidoApiControllerTest` | Controlador aislado; MockMvc `standaloneSetup` | Contrato JSON, lista vacía y cálculo de `totalUnidades`. |
 | `PedidoSecurityIntegrationTest` **[S07]** | Integración MVC con contexto Spring | Login requerido, autorización por roles, CSRF y acceso autenticado al resumen. |
-| `PedidoReporteControllerTest` **[S09]** | Controlador aislado con Mockito + MockMvc | Contratos JSON de los endpoints de reportes. |
+| `PedidoReporteControllerIntegrationTest` **[S09]** | Integración MVC + seguridad + H2 | Contratos HAL/HATEOAS, filtros por query parameter y retiro de la URI RPC `/buscar`. |
 | `PedidoReporteJdbcRepositoryTest` **[S09]** | Integración Spring Boot + H2 | Consultas agregadas, parámetros con nombre, `RowMapper` y `GROUP BY`. |
 | `SistemaPedidosSpringbootApplicationTests` | Contexto de Spring Boot | Carga del contexto de aplicación. |
 
@@ -421,22 +429,46 @@ MockMvcBuilders.webAppContextSetup(context)
 | Resumen vacío | Servicio devuelve lista vacía | `totalPedidos=0` y `totalUnidades=0`. |
 | Dos pedidos | Cantidades `2` y `3` simuladas con Mockito | `totalPedidos=2` y `totalUnidades=5`. |
 
-Los tests de seguridad del repositorio simulan la identidad con utilidades de Spring Security Test y no necesitan autenticar usuarios manualmente en un navegador. Los tests de contratos JSON aislados no requieren levantar `inventario-service`.
+Las pruebas unitarias puras (`PedidoServiceImplTest`, `PedidoApiControllerTest`) usan mocks y no necesitan una base de datos. Las pruebas que cargan el contexto Spring activan el perfil `test`, por lo que utilizan H2 en memoria y nunca dependen de una instancia MySQL externa.
 
 ## 11. Persistencia, integración y transacciones
 
-### H2 local
+### MySQL para ejecución normal
 
-La base de datos utiliza la URL:
+La aplicación utiliza **MySQL** cuando se ejecuta normalmente. La conexión se externaliza para no fijar credenciales reales en el repositorio:
 
 ```properties
-spring.datasource.url=jdbc:h2:mem:pedidosdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+spring.datasource.url=${DB_URL:jdbc:mysql://localhost:3306/sistema_pedidos?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=America/Lima}
+spring.datasource.username=${DB_USERNAME:root}
+spring.datasource.password=${DB_PASSWORD:}
+```
+
+Crear previamente la base de datos local, por ejemplo:
+
+```sql
+CREATE DATABASE sistema_pedidos
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+```
+
+En PowerShell pueden establecerse credenciales sin modificar `application.properties`:
+
+```powershell
+$env:DB_URL = "jdbc:mysql://localhost:3306/sistema_pedidos?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=America/Lima"
+$env:DB_USERNAME = "root"
+$env:DB_PASSWORD = "<clave-local>"
+```
+
+### H2 exclusivamente para pruebas
+
+`src/test/resources/application-test.properties` define una base **H2 en memoria** con `MODE=MySQL`. Las pruebas que cargan el contexto Spring usan `@ActiveProfiles("test")`, por lo que `mvn test` no requiere MySQL.
+
+```properties
+spring.datasource.url=jdbc:h2:mem:pedidos_test;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
 spring.jpa.hibernate.ddl-auto=create-drop
 ```
 
-Es una base **en memoria** y su esquema se crea y elimina según el ciclo de vida de la aplicación. Los pedidos de laboratorio no se conservan de forma permanente al reiniciar.
-
-En el `application.properties` permanecen credenciales **demostrativas de H2**. La consola web está **desactivada**; estos parámetros no equivalen a usuarios de Spring Security.
+> Las pruebas unitarias puras no deberían usar ninguna base de datos: `PedidoServiceImplTest` y `PedidoApiControllerTest` continúan trabajando con Mockito. H2 se utiliza en las pruebas de integración y acceso a datos.
 
 ### Integración remota
 
@@ -451,26 +483,26 @@ inventario-service (Jakarta EE / WildFly :8082)
 SQL Server
 ```
 
-El GET de la pantalla JSP consulta productos desde inventario y pedidos desde H2. Por ello, la pantalla completa requiere que `inventario-service` esté disponible.
+El GET de la pantalla JSP consulta productos desde inventario y pedidos desde MySQL. Por ello, el flujo completo requiere MySQL e `inventario-service` disponibles.
 
 ### Límite transaccional
 
-`@Transactional` coordina la persistencia **local** de pedidos en H2. Una reserva de stock confirmada por HTTP en `inventario-service` **no se revierte automáticamente** al hacer rollback en H2. El proyecto no implementa una transacción distribuida ni una compensación automática. Esta limitación debe considerarse al diseñar reintentos y recuperaciones.
+`@Transactional` coordina la persistencia **local** de pedidos en MySQL. Una reserva de stock confirmada por HTTP en `inventario-service` **no se revierte automáticamente** si posteriormente se produce rollback local. El proyecto no implementa una transacción distribuida ni una compensación automática.
 
 ## 12. Limitaciones y siguientes pasos
 
 - **Entorno de laboratorio:** usuarios y roles en memoria; contraseñas predeterminadas con fines docentes. Nunca desplegar tal cual en Internet.
 - **Seguridad:** no incluye OAuth2/OIDC, JWT/Bearer, MFA, políticas de bloqueo, gestión persistente de usuarios, autorización por propietario ni auditoría completa.
-- **Persistencia:** H2 es volátil; migrar a base de datos persistente para otro entorno.
+- **Persistencia:** MySQL se utiliza en ejecución normal. Para un despliegue productivo conviene reemplazar `ddl-auto=update` por migraciones versionadas (por ejemplo, Flyway o Liquibase) y `ddl-auto=validate`.
 - **Operación:** retirar secretos y valores demostrativos, emplear HTTPS, configurar perfiles, observabilidad y políticas apropiadas de manejo de sesiones.
-- **Consistencia:** diseñar idempotencia, compensación y tratamiento de fallos entre H2 y el sistema remoto de inventario.
+- **Consistencia:** diseñar idempotencia, compensación y tratamiento de fallos entre MySQL y el sistema remoto de inventario.
 - **Validación:** ejecutar `clean test` y las pruebas manuales de login, roles, CSRF y flujo completo antes de compartir o desplegar cambios.
 
 **Evoluciones sugeridas para sesiones posteriores:** externalizar configuración por perfiles, introducir Bean Validation con DTO de formularios, centralizar excepciones donde aporte valor y proteger APIs con un mecanismo apropiado para sus consumidores.
 
 ## 13. Spring JDBC y reportes — Sesión 9
 
-La sesión 9 incorpora un módulo de **reportes de solo lectura con Spring JDBC** sin reemplazar el CRUD existente con Spring Data JPA. Ambos mecanismos reutilizan el mismo `DataSource` H2 y la misma tabla `pedido`.
+La sesión 9 incorpora un módulo de **reportes de solo lectura con Spring JDBC** sin reemplazar el CRUD existente con Spring Data JPA. Ambos mecanismos reutilizan el mismo `DataSource`: MySQL en ejecución normal y H2 en memoria bajo el perfil `test`.
 
 ### Arquitectura incorporada
 
@@ -488,17 +520,32 @@ PedidoReporteJdbcRepository
         +--> PedidoRowMapper
         |
         v
-DataSource H2 / tabla pedido
+DataSource MySQL (runtime) / H2 (test)
+               tabla pedido
 ```
 
 El flujo operacional existente continúa utilizando `PedidoService` y `PedidoRepository` con Spring Data JPA. La integración HTTP con `inventario-service` no cambia.
 
-### Dependencia añadida
+### Dependencias relevantes
 
 ```xml
 <dependency>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-jdbc</artifactId>
+</dependency>
+<dependency>
+<groupId>com.mysql</groupId>
+<artifactId>mysql-connector-j</artifactId>
+<scope>runtime</scope>
+</dependency>
+<dependency>
+<groupId>com.h2database</groupId>
+<artifactId>h2</artifactId>
+<scope>test</scope>
+</dependency>
+<dependency>
+<groupId>org.springframework.boot</groupId>
+<artifactId>spring-boot-starter-hateoas</artifactId>
 </dependency>
 ```
 
@@ -506,18 +553,60 @@ El flujo operacional existente continúa utilizando `PedidoService` y `PedidoRep
 
 | Método | Ruta relativa | Propósito | API Spring JDBC |
 |---|---|---|---|
-| GET | `/api/v1/reportes/pedidos/resumen` | Total de pedidos, unidades, importe acumulado y ticket promedio. | `JdbcTemplate.queryForObject()` |
-| GET | `/api/v1/reportes/pedidos/buscar?cliente=Ana` | Búsqueda parametrizada por nombre de cliente. | `NamedParameterJdbcTemplate.query()` |
-| GET | `/api/v1/reportes/pedidos/productos-mas-vendidos` | Agrupación por producto con unidades e importe acumulado. | `JdbcTemplate.query()` + `GROUP BY` |
+| GET | `/api/v1/pedidos/estadisticas/resumen` | Total de pedidos, unidades, importe acumulado y ticket promedio. | `JdbcTemplate.queryForObject()` |
+| GET | `/api/v1/pedidos?cliente=Ana` | Colección de pedidos filtrada por cliente. | `NamedParameterJdbcTemplate.query()` |
+| GET | `/api/v1/pedidos/estadisticas/productos` | Agrupación por producto con unidades e importe acumulado. | `JdbcTemplate.query()` + `GROUP BY` |
 
 Las tres rutas requieren autenticación y admiten los roles de laboratorio `OPERADOR` y `CONSULTA`.
+
+### Modelo de Madurez de Richardson — demostracion progresiva
+
+Este controlador ofrece **tres rutas diferenciadas intencionalmente** para explicar en clase las etapas del modelo. Los niveles son **acumulativos** y no son una propiedad exclusiva de cada URI: una API que alcanza el nivel 3 tambien aplica los principios de los niveles anteriores. La ruta de nivel 1 usa `GET` por la naturaleza del framework, pero no busca demostrar el uso completo de la semantica HTTP.
+
+| Ejemplo | Ruta | Respuesta | Concepto destacado |
+|---|---|---|---|
+| **1 — Resources** | `GET /api/v1/pedidos?cliente=Ana` | `application/json`, arreglo de pedidos **sin** `_links` | URI de coleccion y filtro como parametro de consulta. |
+| **2 — HTTP Verbs** | `GET /api/v1/pedidos/estadisticas/resumen` | `application/json`, `200 OK`, objeto JSON **sin** `_links` | GET seguro, respuesta HTTP explicita y representacion del recurso. |
+| **3 — Hypermedia Controls** | `GET /api/v1/pedidos/estadisticas/productos` | `application/hal+json`, `_embedded` y `_links` | Navegacion por relaciones `self`, `estadisticas-resumen` y `pedidos`. |
+
+Ejemplo conceptual **nivel 1**:
+
+```json
+[{"...": "campos de PedidoResponse"}]
+```
+
+Ejemplo conceptual **nivel 2**:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+```
+
+```json
+{"totalPedidos": 3, "totalUnidades": 7, "importeAcumulado": 5250.00, "ticketPromedio": 1750.00}
+```
+
+Ejemplo conceptual **nivel 3** (la forma exacta de `_embedded` depende de la serializacion HAL):
+
+```json
+{
+  "_embedded": { "productoVendidoDtoList": [{"...": "campos de ProductoVendidoDto"}] },
+  "_links": {
+    "self": {"href": ".../api/v1/pedidos/estadisticas/productos"},
+    "estadisticas-resumen": {"href": ".../api/v1/pedidos/estadisticas/resumen"},
+    "pedidos": {"href": ".../api/v1/pedidos{?cliente}", "templated": true}
+  }
+}
+```
+
+**Importante:** esta distincion es **pedagogica**. En un servicio empresarial REST consistente, no se suele restringir artificialmente el nivel de madurez segun cada endpoint. Las rutas usan nombres orientados a recursos, inspirados en buenas practicas REST; **no se afirma conformidad formal con BIAN**.
 
 ### Pruebas incorporadas
 
 | Clase | Nivel | Verificación |
 |---|---|---|
 | `PedidoReporteJdbcRepositoryTest` | Integración con H2 | SQL agregado, parámetros con nombre, `RowMapper` y agrupaciones. |
-| `PedidoReporteControllerTest` | Controlador aislado con Mockito + MockMvc | Contratos JSON de resumen, búsqueda y productos más vendidos. |
+| `PedidoReporteControllerIntegrationTest` | Integración MVC + H2 | Representaciones JSON sin hipermedia (niveles 1 y 2), HAL (nivel 3), seguridad y rutas REST. |
 
 Para ejecutar toda la suite:
 
@@ -536,6 +625,8 @@ Para ejecutar toda la suite:
 - [Spring Security — MockMvc Test Support](https://docs.spring.io/spring-security/reference/servlet/test/mockmvc/index.html)
 - [Spring Framework — JDBC](https://docs.spring.io/spring-framework/reference/data-access/jdbc.html)
 - [Spring Boot — SQL Databases](https://docs.spring.io/spring-boot/reference/data/sql.html)
+- [Spring Boot — Spring HATEOAS](https://docs.spring.io/spring-boot/reference/web/spring-hateoas.html)
+- [Richardson Maturity Model — Martin Fowler](https://martinfowler.com/articles/richardsonMaturityModel.html)
 - [Spring Boot — Reference Documentation](https://docs.spring.io/spring-boot/reference/)
 
 ---
