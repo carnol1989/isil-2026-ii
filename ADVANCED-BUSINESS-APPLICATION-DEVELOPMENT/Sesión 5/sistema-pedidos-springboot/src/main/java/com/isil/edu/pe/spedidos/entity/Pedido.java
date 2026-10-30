@@ -3,6 +3,8 @@ package com.isil.edu.pe.spedidos.entity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -41,11 +43,15 @@ public class Pedido {
   @Column(nullable = false)
   private LocalDateTime fecha;
 
+  @Enumerated(EnumType.STRING)
+  @Column(nullable = false, length = 20)
+  private PedidoEstado estado = PedidoEstado.REGISTRADO;
+
   public Pedido() {
   }
 
   public Pedido(String cliente, String productoCodigo, String productoNombre, BigDecimal precioUnitario,
-      int cantidad, BigDecimal total) {
+                int cantidad, BigDecimal total) {
     this.cliente = cliente;
     this.productoCodigo = productoCodigo;
     this.productoNombre = productoNombre;
@@ -53,10 +59,11 @@ public class Pedido {
     this.cantidad = cantidad;
     this.total = total;
     this.fecha = LocalDateTime.now();
+    this.estado = PedidoEstado.REGISTRADO;
   }
 
   public Pedido(Long id, String cliente, String productoCodigo, String productoNombre, BigDecimal precioUnitario,
-      int cantidad, BigDecimal total, LocalDateTime fecha) {
+                int cantidad, BigDecimal total, LocalDateTime fecha) {
     this.id = id;
     this.cliente = cliente;
     this.productoCodigo = productoCodigo;
@@ -65,6 +72,7 @@ public class Pedido {
     this.cantidad = cantidad;
     this.total = total;
     this.fecha = fecha;
+    this.estado = PedidoEstado.REGISTRADO;
   }
 
   public Long getId() {
@@ -129,5 +137,13 @@ public class Pedido {
 
   public void setFecha(LocalDateTime fecha) {
     this.fecha = fecha;
+  }
+
+  public PedidoEstado getEstado() {
+    return estado;
+  }
+
+  public void setEstado(PedidoEstado estado) {
+    this.estado = estado;
   }
 }

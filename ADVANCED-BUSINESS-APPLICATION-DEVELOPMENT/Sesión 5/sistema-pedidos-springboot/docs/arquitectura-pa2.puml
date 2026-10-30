@@ -1,0 +1,33 @@
+@startuml
+skinparam componentStyle rectangle
+
+actor "Postman / .http" as User
+component "AnulacionPedidoController\nSpring MVC" as Controller
+component "AnulacionPedidoServiceImpl\n@Service" as Service
+component "DevolucionStockClient" as Port
+component "DevolucionStockRestClient\nRestClient" as Client
+component "PedidoRepository" as PedidoRepo
+component "AnulacionPedidoRepository" as AnulRepo
+database "H2\npedido + anulacion_pedido" as H2
+component "ProductoResource\nJakarta REST" as Resource
+component "InventarioService\n@Stateless" as InvService
+database "SQL Server\nInventarioDB" as Sql
+
+User --> Controller : POST /api/v1/anulaciones\nGET /api/v1/anulaciones
+Controller --> Service : Constructor Injection
+Service --> PedidoRepo
+Service --> AnulRepo
+PedidoRepo --> H2
+AnulRepo --> H2
+Service --> Port : devolverStock(codigo,cantidad)
+Port <|.. Client
+Client --> Resource : HTTP POST + JSON\n/codigo/{codigo}/devoluciones
+Resource --> InvService : @EJB
+InvService --> Sql : JPA/JTA + @Version
+
+note bottom of Service
+@Transactional solo cubre H2.
+La devolución en SQL Server es remota
+y no participa en una transacción distribuida.
+end note
+@enduml

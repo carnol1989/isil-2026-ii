@@ -1,0 +1,77 @@
+@pedidosBaseUrl = http://localhost:8081/sistema-pedidos
+@inventarioBaseUrl = http://localhost:8082/inventario-service/api
+
+### 0. Consultar stock inicial
+GET {{inventarioBaseUrl}}/inventario/productos/codigo/LAP-001/stock
+Accept: application/json
+
+### 1. Listar pedidos y obtener un pedidoId registrado
+GET {{pedidosBaseUrl}}/api/v1/orders
+Accept: application/json
+
+### 2. Caso 1 - Anulación correcta
+POST {{pedidosBaseUrl}}/api/v1/anulaciones
+Content-Type: application/json
+Accept: application/json
+
+{
+  "pedidoId": 1,
+  "motivo": "Solicitud del cliente"
+}
+
+### 3. Verificar stock posterior a la anulación
+GET {{inventarioBaseUrl}}/inventario/productos/codigo/LAP-001/stock
+Accept: application/json
+
+### 4. Consultar auditoría de anulaciones
+GET {{pedidosBaseUrl}}/api/v1/anulaciones
+Accept: application/json
+
+### 5. Caso 2 - Anulación duplicada: repetir el mismo pedidoId (esperado 409)
+POST {{pedidosBaseUrl}}/api/v1/anulaciones
+Content-Type: application/json
+Accept: application/json
+
+{
+  "pedidoId": 1,
+  "motivo": "Segundo intento"
+}
+
+### 6. Caso 3 - Pedido inexistente (esperado 404)
+POST {{pedidosBaseUrl}}/api/v1/anulaciones
+Content-Type: application/json
+Accept: application/json
+
+{
+  "pedidoId": 999999,
+  "motivo": "Prueba de pedido inexistente"
+}
+
+### 7. Caso 4 - Inventario indisponible
+# Detener inventario-service antes de ejecutar. Esperado 503 y sin cambios locales.
+POST {{pedidosBaseUrl}}/api/v1/anulaciones
+Content-Type: application/json
+Accept: application/json
+
+{
+  "pedidoId": 2,
+  "motivo": "Prueba con inventario detenido"
+}
+
+### 8. Caso 5 - Contrato directo de devolución válido
+POST {{inventarioBaseUrl}}/inventario/productos/codigo/LAP-001/devoluciones
+Content-Type: application/json
+Accept: application/json
+
+{
+  "cantidad": 2
+}
+
+### 9. Caso 5 - Contrato directo de devolución inválido (esperado 400)
+POST {{inventarioBaseUrl}}/inventario/productos/codigo/LAP-001/devoluciones
+Content-Type: application/json
+Accept: application/json
+
+{
+  "cantidad": 0
+}
