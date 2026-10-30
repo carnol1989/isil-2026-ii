@@ -24,6 +24,8 @@ public class SecurityConfig {
             .requestMatchers("/h2-console/**").denyAll()
             .requestMatchers(HttpMethod.POST, "/pedidos")
               .hasAnyRole("OPERADOR")
+            .requestMatchers(HttpMethod.GET, "/api/v1/reportes/pedidos/**")
+              .hasAnyRole("OPERADOR", "CONSULTA")
             .requestMatchers(HttpMethod.GET, "/pedidos")
               .hasAnyRole("OPERADOR", "CONSULTA")
             .anyRequest().authenticated()

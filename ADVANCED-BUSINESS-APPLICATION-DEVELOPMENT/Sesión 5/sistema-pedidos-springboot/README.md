@@ -1,11 +1,12 @@
 # Sistema de Pedidos — Spring Boot
 
 > Proyecto académico evolutivo · **Desarrollo de Aplicaciones Empresariales Avanzado** · ISIL  
-> **Sesión 7:** Spring MVC, eficiencia y seguridad web con Spring Security.
+> **Sesiones 7:** Spring MVC, seguridad web con Spring Security.
+> > **Sesiones 9:** Persistencia de reportes con Spring JDBC.
 
 Aplicación empresarial de referencia para estudiar la migración de **Jakarta EE/WildFly a Spring Boot**, la separación de responsabilidades, la integración HTTP con `inventario-service` y la protección de una aplicación web con **autenticación, autorización y CSRF**.
 
-El proyecto conserva una interfaz **Spring MVC + JSP** y expone una **API JSON** que reutiliza la misma capa de negocio. En la sesión 7 se agregaron usuarios de laboratorio, reglas de acceso por rol, protección CSRF y pruebas automatizadas; también se amplió el resumen de pedidos con `totalUnidades`.
+El proyecto conserva una interfaz **Spring MVC + JSP** y expone una **API JSON** que reutiliza la misma capa de negocio. En la sesión 7 se agregaron usuarios de laboratorio, reglas de acceso por rol, protección CSRF y pruebas automatizadas. En la sesión 9 se incorpora un módulo de reportes de solo lectura con **Spring JDBC**, manteniendo Spring Data JPA para el CRUD existente.
 
 **Alcance:** Implementación académica para ejecución local. No constituye una solución de seguridad lista para producción.
 
@@ -23,7 +24,8 @@ El proyecto conserva una interfaz **Spring MVC + JSP** y expone una **API JSON**
 10. [Pruebas automatizadas y verificación manual](#10-pruebas-automatizadas-y-verificación-manual)
 11. [Persistencia, integración y transacciones](#11-persistencia-integración-y-transacciones)
 12. [Limitaciones y siguientes pasos](#12-limitaciones-y-siguientes-pasos)
-13. [Referencias técnicas](#13-referencias-técnicas)
+13. [Spring JDBC y reportes — Sesión 9](#13-spring-jdbc-y-reportes--sesión-9)
+14. [Referencias técnicas](#14-referencias-técnicas)
 
 ---
 
@@ -37,6 +39,7 @@ El proyecto conserva una interfaz **Spring MVC + JSP** y expone una **API JSON**
 | Inyección de dependencias | IoC, DI por constructor, interfaces y beans | `PedidoController`, `PedidoServiceImpl`, `InventarioClient` |
 | Spring Framework / MVC | Mapeos HTTP, `Model`, JSP, DTO y JSON | `PedidoController`, `PedidoApiController`, `PedidoResponse` |
 | **Sesión 7** | **Autenticación, autorización, CSRF y pruebas de seguridad** | **`SecurityConfig`, `pedidos.jsp`, `PedidoSecurityIntegrationTest`** |
+| **Sesión 9** | **Spring JDBC, SQL parametrizado y reportes de solo lectura** | **`PedidoReporteJdbcRepository`, `PedidoRowMapper`, `PedidoReporteController`** |
 
 **Resultados de aprendizaje de la sesión 7:**
 
@@ -67,7 +70,7 @@ El proyecto conserva una interfaz **Spring MVC + JSP** y expone una **API JSON**
 | Web | Spring MVC (`spring-boot-starter-webmvc`) |
 | Vista | JSP, JSTL y Tomcat Jasper; empaquetado **WAR** |
 | API | `@RestController`, DTO `PedidoResponse` y serialización JSON |
-| Persistencia | Spring Data JPA, Hibernate y H2 en memoria |
+| Persistencia | Spring Data JPA + Spring JDBC (`JdbcTemplate`, `NamedParameterJdbcTemplate`) sobre H2 en memoria |
 | Integración | Spring `RestClient`, HTTP/JSON con `inventario-service` |
 | Seguridad (S07) | Spring Security, `SecurityFilterChain`, `formLogin`, `BCryptPasswordEncoder`, CSRF |
 | Pruebas | JUnit 5, Mockito, Spring Test, MockMvc y Spring Security Test |
@@ -146,12 +149,15 @@ sistema-pedidos-springboot/
     │   ├── java/com/isil/edu/pe/spedidos/
     │   │   ├── client/           # InventarioClient, InventarioRestClient y DTO HTTP
     │   │   ├── config/           # InventarioHttpConfig y SecurityConfig [S07]
-    │   │   ├── controller/       # HomeController, PedidoController, PedidoApiController
-    │   │   │   └── dto/          # PedidoResponse
+    │   │   ├── controller/       # HomeController, PedidoController, PedidoApiController y reportes [S09]
+    │   │   │   └── dto/          # DTO HTTP, incluidos reportes [S09]
     │   │   ├── entity/           # Pedido
     │   │   ├── exception/        # PedidoException
-    │   │   ├── repository/       # PedidoRepository
-    │   │   ├── service/          # PedidoService y PedidoServiceImpl
+    │   │   ├── repository/       # PedidoRepository + repositorio/reportes Spring JDBC [S09]
+    │   │   │   └── projection/   # Proyecciones SQL de reportes [S09]
+    │   │   ├── service/          # PedidoService + PedidoReporteService [S09]
+    │   │   │   ├── dto/          # Modelos de servicio de reportes [S09]
+    │   │   │   └── impl/         # Implementaciones de servicios
     │   │   └── SistemaPedidosSpringbootApplication.java
     │   ├── resources/application.properties
     │   └── webapp/
@@ -163,7 +169,9 @@ sistema-pedidos-springboot/
         ├── SistemaPedidosSpringbootApplicationTests.java
         ├── controller/
         │   ├── PedidoApiControllerTest.java        # Contrato JSON; standalone
-        │   └── PedidoSecurityIntegrationTest.java # Seguridad MVC; filtros [S07]
+        │   ├── PedidoSecurityIntegrationTest.java # Seguridad MVC; filtros [S07]
+        │   └── PedidoReporteControllerTest.java  # Contratos JSON de reportes [S09]
+        ├── repository/PedidoReporteJdbcRepositoryTest.java # Integración Spring JDBC/H2 [S09]
         └── service/impl/PedidoServiceImplTest.java
 ```
 
@@ -289,6 +297,9 @@ Los mappings se escriben **sin** el contexto; en el navegador o cliente HTTP se 
 | POST | `/pedidos` | `PedidoController` | Registro y redirección (patrón POST/Redirect/GET) o error. |
 | GET | `/api/v1/orders` | `PedidoApiController` | Arreglo JSON de `PedidoResponse`. |
 | GET | `/api/v1/orders/resumen` | `PedidoApiController` | JSON de resumen con `modulo`, `totalPedidos`, `totalUnidades`. |
+| GET | `/api/v1/reportes/pedidos/resumen` | `PedidoReporteController` **[S09]** | Resumen agregado mediante `JdbcTemplate.queryForObject()`. |
+| GET | `/api/v1/reportes/pedidos/buscar?cliente=Ana` | `PedidoReporteController` **[S09]** | Búsqueda parametrizada mediante `NamedParameterJdbcTemplate`. |
+| GET | `/api/v1/reportes/pedidos/productos-mas-vendidos` | `PedidoReporteController` **[S09]** | Reporte agrupado mediante SQL explícito y `JdbcTemplate.query()`. |
 | GET/POST | `/login` | Spring Security | Formulario de login y procesamiento de autenticación. |
 | POST | `/logout` | Spring Security | Cierre de sesión (requiere token CSRF válido). |
 
@@ -385,6 +396,8 @@ Ejecutar todos los tests:
 | `PedidoServiceImplTest` | Unitaria con Mockito | Comportamiento del servicio con colaboradores simulados. |
 | `PedidoApiControllerTest` | Controlador aislado; MockMvc `standaloneSetup` | Contrato JSON, lista vacía y cálculo de `totalUnidades`. |
 | `PedidoSecurityIntegrationTest` **[S07]** | Integración MVC con contexto Spring | Login requerido, autorización por roles, CSRF y acceso autenticado al resumen. |
+| `PedidoReporteControllerTest` **[S09]** | Controlador aislado con Mockito + MockMvc | Contratos JSON de los endpoints de reportes. |
+| `PedidoReporteJdbcRepositoryTest` **[S09]** | Integración Spring Boot + H2 | Consultas agregadas, parámetros con nombre, `RowMapper` y `GROUP BY`. |
 | `SistemaPedidosSpringbootApplicationTests` | Contexto de Spring Boot | Carga del contexto de aplicación. |
 
 En las pruebas de seguridad se utiliza:
@@ -455,15 +468,76 @@ El GET de la pantalla JSP consulta productos desde inventario y pedidos desde H2
 
 **Evoluciones sugeridas para sesiones posteriores:** externalizar configuración por perfiles, introducir Bean Validation con DTO de formularios, centralizar excepciones donde aporte valor y proteger APIs con un mecanismo apropiado para sus consumidores.
 
-## 13. Referencias técnicas
+## 13. Spring JDBC y reportes — Sesión 9
+
+La sesión 9 incorpora un módulo de **reportes de solo lectura con Spring JDBC** sin reemplazar el CRUD existente con Spring Data JPA. Ambos mecanismos reutilizan el mismo `DataSource` H2 y la misma tabla `pedido`.
+
+### Arquitectura incorporada
+
+```text
+PedidoReporteController
+        |
+        v
+PedidoReporteService
+        |
+        v
+PedidoReporteJdbcRepository
+        |
+        +--> JdbcTemplate
+        +--> NamedParameterJdbcTemplate
+        +--> PedidoRowMapper
+        |
+        v
+DataSource H2 / tabla pedido
+```
+
+El flujo operacional existente continúa utilizando `PedidoService` y `PedidoRepository` con Spring Data JPA. La integración HTTP con `inventario-service` no cambia.
+
+### Dependencia añadida
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-jdbc</artifactId>
+</dependency>
+```
+
+### Endpoints de reportes
+
+| Método | Ruta relativa | Propósito | API Spring JDBC |
+|---|---|---|---|
+| GET | `/api/v1/reportes/pedidos/resumen` | Total de pedidos, unidades, importe acumulado y ticket promedio. | `JdbcTemplate.queryForObject()` |
+| GET | `/api/v1/reportes/pedidos/buscar?cliente=Ana` | Búsqueda parametrizada por nombre de cliente. | `NamedParameterJdbcTemplate.query()` |
+| GET | `/api/v1/reportes/pedidos/productos-mas-vendidos` | Agrupación por producto con unidades e importe acumulado. | `JdbcTemplate.query()` + `GROUP BY` |
+
+Las tres rutas requieren autenticación y admiten los roles de laboratorio `OPERADOR` y `CONSULTA`.
+
+### Pruebas incorporadas
+
+| Clase | Nivel | Verificación |
+|---|---|---|
+| `PedidoReporteJdbcRepositoryTest` | Integración con H2 | SQL agregado, parámetros con nombre, `RowMapper` y agrupaciones. |
+| `PedidoReporteControllerTest` | Controlador aislado con Mockito + MockMvc | Contratos JSON de resumen, búsqueda y productos más vendidos. |
+
+Para ejecutar toda la suite:
+
+```powershell
+.\mvnw.cmd clean test
+```
+
+> La sesión 9 no elimina ni sustituye `PedidoRepository`, `PedidoServiceImpl`, `PedidoController`, `PedidoApiController` ni la integración con `inventario-service`.
+
+## 14. Referencias técnicas
 
 - [Spring Framework — Web MVC](https://docs.spring.io/spring-framework/reference/web/webmvc.html)
 - [Spring Framework — HTTP Message Conversion](https://docs.spring.io/spring-framework/reference/web/webmvc/message-converters.html)
 - [Spring Security — Servlet Authorization](https://docs.spring.io/spring-security/reference/servlet/authorization/authorize-http-requests.html)
 - [Spring Security — CSRF Protection](https://docs.spring.io/spring-security/reference/servlet/exploits/csrf.html)
 - [Spring Security — MockMvc Test Support](https://docs.spring.io/spring-security/reference/servlet/test/mockmvc/index.html)
+- [Spring Framework — JDBC](https://docs.spring.io/spring-framework/reference/data-access/jdbc.html)
+- [Spring Boot — SQL Databases](https://docs.spring.io/spring-boot/reference/data/sql.html)
 - [Spring Boot — Reference Documentation](https://docs.spring.io/spring-boot/reference/)
 
 ---
 
-**Uso académico:** curso *Desarrollo de Aplicaciones Empresariales Avanzado* · Continuidad del caso **Sistema de Pedidos** · Sesión 7: **Spring MVC y Seguridad con Spring**.
+**Uso académico:** curso *Desarrollo de Aplicaciones Empresariales Avanzado* · Continuidad del caso **Sistema de Pedidos** · Sesiones 7 y 9: **Spring MVC, Seguridad con Spring y Spring JDBC**.
