@@ -10,35 +10,30 @@ import java.math.BigDecimal;
 
 /**
  * Entidad que representa un producto disponible para la venta.
+ *
+ * <p>Además de exponer su información, la entidad encapsula las operaciones que modifican
+ * el stock. De esta manera, la regla de no permitir un stock negativo no queda dispersa en
+ * el Servlet o en la vista.</p>
  */
 @Entity
 @Table(name = "producto")
 public class Producto {
 
   @Id
-  @GeneratedValue(
-      strategy = GenerationType.IDENTITY
-  )
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
 
-  @Column(
-      nullable = false,
-      length = 100
-  )
+  @Column(nullable = false, length = 100)
   private String nombre;
 
-  @Column(
-      nullable = false,
-      precision = 12,
-      scale = 2
-  )
+  @Column(nullable = false, precision = 12, scale = 2)
   private BigDecimal precio;
 
   @Column(nullable = false)
   private int stock;
 
   protected Producto() {
-    // Constructor requerido por JPA
+    // Constructor requerido por JPA.
   }
 
   public Producto(String nombre, BigDecimal precio, int stock) {
@@ -63,6 +58,13 @@ public class Producto {
     return stock;
   }
 
+  /**
+   * Descuenta unidades del stock disponible.
+   *
+   * @param cantidad unidades a reservar para un pedido
+   * @throws IllegalArgumentException si la cantidad no es positiva
+   * @throws IllegalStateException si no existe stock suficiente
+   */
   public void descontarStock(int cantidad) {
     if (cantidad <= 0) {
       throw new IllegalArgumentException("La cantidad debe ser mayor que cero.");
@@ -75,4 +77,18 @@ public class Producto {
     stock -= cantidad;
   }
 
+  /**
+   * Repone unidades al stock. Se utiliza al reducir/cancelar un pedido o cuando el pedido
+   * cambia de producto.
+   *
+   * @param cantidad unidades que retornan al inventario
+   * @throws IllegalArgumentException si la cantidad no es positiva
+   */
+  public void reponerStock(int cantidad) {
+    if (cantidad <= 0) {
+      throw new IllegalArgumentException("La cantidad a reponer debe ser mayor que cero.");
+    }
+
+    stock += cantidad;
+  }
 }

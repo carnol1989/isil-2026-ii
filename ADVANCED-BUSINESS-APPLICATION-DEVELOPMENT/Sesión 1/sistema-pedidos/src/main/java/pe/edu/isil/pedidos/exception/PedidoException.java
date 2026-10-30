@@ -1,4 +1,4 @@
-package pe.edu.isil.pedidos.service;
+package pe.edu.isil.pedidos.exception;
 
 import jakarta.ejb.ApplicationException;
 

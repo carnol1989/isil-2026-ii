@@ -14,47 +14,36 @@ import java.time.LocalDateTime;
 
 /**
  * Entidad que representa un pedido realizado por un cliente.
+ *
+ * <p>La modificación de los datos del pedido se realiza mediante una operación de dominio
+ * para evitar que otras capas manipulen directamente el estado interno de la entidad.</p>
  */
 @Entity
 @Table(name = "pedido")
 public class Pedido {
 
   @Id
-  @GeneratedValue(
-      strategy = GenerationType.IDENTITY
-  )
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
 
-  @Column(
-      nullable = false,
-      length = 120
-  )
+  @Column(nullable = false, length = 120)
   private String cliente;
 
-  @ManyToOne(
-      fetch = FetchType.EAGER,
-      optional = false
-  )
-  @JoinColumn(
-      name = "producto_id",
-      nullable = false
-  )
+  @ManyToOne(fetch = FetchType.EAGER, optional = false)
+  @JoinColumn(name = "producto_id", nullable = false)
   private Producto producto;
 
   @Column(nullable = false)
   private int cantidad;
 
-  @Column(
-      nullable = false,
-      precision = 12,
-      scale = 2
-  )
+  @Column(nullable = false, precision = 12, scale = 2)
   private BigDecimal total;
 
   @Column(nullable = false)
   private LocalDateTime fecha;
 
   protected Pedido() {
+    // Constructor requerido por JPA.
   }
 
   public Pedido(String cliente, Producto producto, int cantidad, BigDecimal total) {
@@ -89,4 +78,19 @@ public class Pedido {
     return fecha;
   }
 
+  /**
+   * Actualiza los datos editables del pedido luego de que la capa de negocio haya validado
+   * stock, existencia de productos y consistencia de la operación.
+   *
+   * @param cliente nuevo nombre del cliente
+   * @param producto producto asociado al pedido
+   * @param cantidad nueva cantidad solicitada
+   * @param total total recalculado del pedido
+   */
+  public void actualizar(String cliente, Producto producto, int cantidad, BigDecimal total) {
+    this.cliente = cliente;
+    this.producto = producto;
+    this.cantidad = cantidad;
+    this.total = total;
+  }
 }
