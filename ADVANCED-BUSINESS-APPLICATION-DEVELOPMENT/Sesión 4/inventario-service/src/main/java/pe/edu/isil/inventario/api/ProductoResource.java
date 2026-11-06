@@ -13,6 +13,8 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.util.List;
 import pe.edu.isil.inventario.domain.ProductoInventario;
+import pe.edu.isil.inventario.dto.DevolucionStockRequest;
+import pe.edu.isil.inventario.dto.DevolucionStockResponse;
 import pe.edu.isil.inventario.dto.ProductoResponse;
 import pe.edu.isil.inventario.dto.ReservaStockRequest;
 import pe.edu.isil.inventario.dto.ReservaStockResponse;
@@ -83,6 +85,35 @@ public class ProductoResource {
         request.getCantidad()
     );
     return Response.ok(toReservaResponse(producto, request.getCantidad())).build();
+  }
+
+  /**
+   * Devuelve unidades al stock de un producto identificado por su código de negocio.
+   *
+   * <p>Contrato PA2:</p>
+   * <pre>
+   * POST /inventario/productos/codigo/{codigo}/devoluciones
+   * { "cantidad": 2 }
+   * </pre>
+   */
+  @POST
+  @Path("/codigo/{codigo}/devoluciones")
+  public Response devolverPorCodigo(
+      @PathParam("codigo") String codigo,
+      @NotNull @Valid DevolucionStockRequest request
+  ) {
+    ProductoInventario producto = inventarioService.devolverStockPorCodigo(
+        codigo,
+        request.getCantidad()
+    );
+
+    DevolucionStockResponse response = new DevolucionStockResponse(
+        producto.getCodigo(),
+        request.getCantidad(),
+        producto.getStock()
+    );
+
+    return Response.ok(response).build();
   }
 
   private static ProductoResponse toResponse(ProductoInventario producto) {

@@ -1,6 +1,6 @@
-# Inventario Service — Jakarta EE 11 + SQL Server Express 2025
+# Inventario Service - PA2
 
-Proyecto académico complementario de `sistema-pedidos-jsp` para la Sesión 4: **Integración de aplicativos web con componentes empresariales**.
+Servicio Jakarta EE responsable del catálogo y del stock remoto utilizado por `sistema-pedidos-springboot`.
 
 ## Stack
 
@@ -9,21 +9,19 @@ Proyecto académico complementario de `sistema-pedidos-jsp` para la Sesión 4: *
 - Jakarta EE 11
 - WildFly 41
 - Jakarta REST
-- Jakarta Enterprise Beans (EJB)
-- Jakarta Persistence 3.2
-- Jakarta Transactions (JTA)
-- Bean Validation
-- Microsoft JDBC Driver for SQL Server 13.6
-- SQL Server Express 2025
+- EJB (`@Stateless`, `@EJB`)
+- Jakarta Persistence / JTA
+- SQL Server Express
+- JUnit 5
 
 ## Arquitectura
 
 ```text
-Sistema de Pedidos / Postman
+Postman / sistema-pedidos-springboot
           |
           | HTTP + JSON
           v
-ProductoResource (Jakarta REST)
+ProductoResource
           |
           | @EJB
           v
@@ -31,60 +29,108 @@ InventarioService (@Stateless)
           |
           | @PersistenceContext
           v
-EntityManager / InventarioPU
+ProductoInventario (JPA, @Version)
           |
-          | java:app/jdbc/InventarioDS
           v
-SQL Server Express 2025
+SQL Server
 ```
 
-## Preparación rápida
+La PA2 añade una operación transaccional de **devolución de stock**. La modificación de stock sigue perteneciendo exclusivamente a este servicio; Spring Boot no accede directamente a `InventarioDB`.
 
-1. Habilitar TCP/IP en SQL Server Express y configurar un puerto fijo (la guía usa 1433).
-2. Habilitar autenticación SQL Server/Mixed Mode para el usuario académico.
-3. Ejecutar `database/01_crear_inventario.sql` en SSMS.
-4. Verificar JDK 21 y Maven.
-5. Ejecutar:
+## Endpoints principales
+
+Base URL:
+
+```text
+http://localhost:8082/inventario-service/api
+```
+
+```text
+GET  /inventario/productos
+GET  /inventario/productos/codigo/{codigo}
+GET  /inventario/productos/codigo/{codigo}/stock
+POST /inventario/productos/codigo/{codigo}/reservas
+POST /inventario/productos/codigo/{codigo}/devoluciones   <-- PA2
+```
+
+### Reserva
+
+```http
+POST /inventario/productos/codigo/LAP-001/reservas
+Content-Type: application/json
+
+{
+  "cantidad": 2
+}
+```
+
+### Devolución de stock - PA2
+
+```http
+POST /inventario/productos/codigo/LAP-001/devoluciones
+Content-Type: application/json
+
+{
+  "cantidad": 2
+}
+```
+
+Respuesta esperada:
+
+```json
+{
+  "codigo": "LAP-001",
+  "cantidadDevuelta": 2,
+  "stockRestante": 10
+}
+```
+
+Validaciones principales:
+
+- `cantidad <= 0`: HTTP 400.
+- código inexistente: HTTP 404.
+- conflicto de optimistic locking: HTTP 409.
+- una devolución válida incrementa el stock exactamente en la cantidad indicada.
+
+## Pruebas unitarias PA2
+
+Las pruebas de dominio no requieren levantar WildFly ni SQL Server.
+
+```bash
+mvn clean test
+```
+
+Se agregan dos pruebas específicas de PA2 sobre `ProductoInventario.devolverStock(...)`:
+
+1. devolución válida: `8 + 2 = 10`;
+2. devolución inválida: `0` o negativo se rechaza y el stock no cambia.
+
+## Ejecución local
+
+1. Configurar SQL Server según `config/database.properties`.
+2. Ejecutar `database/01_crear_inventario.sql`.
+3. Opcionalmente restablecer datos con `database/02_reset_stock_demo.sql`.
+4. Ejecutar:
 
 ```bash
 mvn clean test
 mvn clean wildfly:run
 ```
 
-El plugin usa `-Djboss.socket.binding.port-offset=2`, por lo que WildFly escucha en HTTP **8082** y Management **9992**. Esto permite ejecutar a la vez el `sistema-pedidos` existente (HTTP 8081, Management 9990).
+WildFly utiliza `port-offset=2`, por lo que el servicio HTTP queda en el puerto `8082`.
 
-Abrir:
+## Recursos de prueba
 
-```text
-http://localhost:8082/inventario-service/
-```
-
-API principal:
-
-```text
-GET  /inventario-service/api/inventario/productos
-GET  /inventario-service/api/inventario/productos/1/stock
-POST /inventario-service/api/inventario/productos/1/reservas
-```
-
-Body de reserva:
-
-```json
-{
-  "cantidad": 2
-}
-```
-
-También existen endpoints por `codigo` (`LAP-001`, `MON-001`, `TEC-001`) para mostrar un contrato menos acoplado a las claves internas de base de datos.
-
-## Material de clase
-
-- `docs/GUIA_IMPLEMENTACION_PASO_A_PASO.md`
-- `docs/INTEGRACION_CON_SISTEMA_PEDIDOS.md`
 - `requests/inventario-service.http`
 - `openapi/inventario-service.yaml`
 - `database/02_reset_stock_demo.sql`
 
-## Nota académica de seguridad
+## Frontera transaccional
 
-`@DataSourceDefinition` contiene usuario/contraseña para reducir pasos durante el laboratorio. En producción las credenciales no deben almacenarse en código; deben externalizarse en un DataSource administrado por WildFly, Credential Store o un mecanismo de secretos. `trustServerCertificate=true` también se usa solo para el laboratorio local.
+La reserva o devolución se confirma en una **transacción local de Inventario**. El `@Version` de `ProductoInventario` conserva el control de concurrencia optimista. Esta transacción no forma una transacción distribuida con H2 en `sistema-pedidos-springboot`.
+
+## Limitaciones académicas
+
+- No se implementa idempotencia distribuida.
+- No se reintentan automáticamente operaciones `POST`.
+- Las credenciales y certificados del laboratorio deben externalizarse en un entorno real.

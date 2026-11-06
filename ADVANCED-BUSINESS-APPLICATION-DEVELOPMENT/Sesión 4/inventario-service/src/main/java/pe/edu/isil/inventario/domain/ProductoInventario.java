@@ -75,6 +75,19 @@ public class ProductoInventario {
     stock -= cantidad;
   }
 
+  /**
+   * Devuelve unidades previamente reservadas al stock disponible.
+   *
+   * @param cantidad número de unidades que deben reincorporarse
+   * @throws IllegalArgumentException si la cantidad no es positiva
+   */
+  public void devolverStock(int cantidad) {
+    if (cantidad <= 0) {
+      throw new IllegalArgumentException("La cantidad debe ser mayor que cero.");
+    }
+    stock += cantidad;
+  }
+
   public Long getId() {
     return id;
   }

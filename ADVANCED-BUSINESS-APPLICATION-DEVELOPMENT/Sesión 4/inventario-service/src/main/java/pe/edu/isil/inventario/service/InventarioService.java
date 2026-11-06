@@ -86,6 +86,34 @@ public class InventarioService {
     return reservar(obtenerProductoPorCodigo(codigo), cantidad);
   }
 
+  /**
+   * Devuelve stock por código de negocio dentro de una transacción local de Inventario.
+   *
+   * <p>La entidad conserva el control optimista mediante {@code @Version}; el
+   * {@code flush()} permite traducir un eventual conflicto antes de retornar.</p>
+   */
+  @TransactionAttribute(TransactionAttributeType.REQUIRED)
+  public ProductoInventario devolverStockPorCodigo(String codigo, int cantidad) {
+    if (cantidad <= 0) {
+      throw datosInvalidos("La cantidad debe ser mayor que cero.");
+    }
+
+    ProductoInventario producto = obtenerProductoPorCodigo(codigo);
+
+    try {
+      producto.devolverStock(cantidad);
+      entityManager.flush();
+      return producto;
+    } catch (IllegalArgumentException e) {
+      throw datosInvalidos(e.getMessage());
+    } catch (OptimisticLockException e) {
+      throw new InventarioException(
+          InventarioException.Tipo.CONFLICTO_CONCURRENCIA,
+          "El stock fue modificado por otra operación. Vuelva a consultar e intente nuevamente."
+      );
+    }
+  }
+
   private ProductoInventario reservar(ProductoInventario producto, int cantidad) {
     if (cantidad <= 0) {
       throw datosInvalidos("La cantidad debe ser mayor que cero.");
