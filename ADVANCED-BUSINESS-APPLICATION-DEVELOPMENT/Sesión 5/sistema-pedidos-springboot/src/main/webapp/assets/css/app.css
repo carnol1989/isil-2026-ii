@@ -45,3 +45,13 @@ code { font-family: Consolas, monospace; }
     .titulo-tabla-acciones { flex-direction: column; align-items: stretch; }
     .titulo-tabla-acciones .boton-link { align-self: flex-start; }
 }
+
+/* PA4 - supervision de pedidos */
+.badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: .8rem; font-weight: 700; }
+.badge-revisado { background: #effaf1; border: 1px solid #b8ddbf; }
+.badge-pendiente { background: #fff8e6; border: 1px solid #ecd28a; }
+.form-revision { display: flex; gap: 8px; align-items: center; }
+.form-revision input { min-width: 200px; }
+.indicadores { display: flex; gap: 16px; flex-wrap: wrap; }
+.indicador { flex: 1 1 140px; border: 1px solid #e0e3e7; border-radius: 10px; padding: 12px 16px; }
+.indicador strong { display: block; font-size: 1.6rem; }

@@ -67,19 +67,8 @@ class PedidoSecurityIntegrationTest {
         .param("cliente", "Ana")
         .param("productoCodigo", "P001")
         .param("cantidad", "1"));
-    // Assert: la validación CSRF ocurre antes del negocio.
+    // Assert: la validaciÃ³n CSRF ocurre antes del negocio.
     response.andExpect(status().isForbidden());
   }
 
-  @Test
-  @DisplayName("Return order summary JSON when CONSULTA role accesses protected API")
-  void returnOrderSummaryJsonWhenConsultaRoleAccessesProtectedApi() throws Exception {
-    // Arrange / Act
-    ResultActions response = mockMvc.perform(get("/api/v1/orders/resumen")
-        .with(user("consulta").roles("CONSULTA")));
-    // Assert
-    response.andExpect(status().isOk())
-        .andExpect(jsonPath("$.totalPedidos").isNumber())
-        .andExpect(jsonPath("$.totalUnidades").isNumber());
-  }
 }

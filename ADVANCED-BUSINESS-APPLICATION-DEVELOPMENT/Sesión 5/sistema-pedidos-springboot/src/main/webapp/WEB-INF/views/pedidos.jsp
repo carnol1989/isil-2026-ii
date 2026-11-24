@@ -109,6 +109,10 @@
                 </p>
             </div>
 
+            <c:url var="supervisionUrl" value="/supervision/pedidos"/>
+
+            <a href="${supervisionUrl}" class="boton-link boton-link-secundario">Supervisión</a>
+
             <c:url var="reportePedidosUrl" value="/reportes/pedidos"/>
             <a href="${reportePedidosUrl}" class="boton-link boton-link-primario">
                 <span aria-hidden="true">▦</span>

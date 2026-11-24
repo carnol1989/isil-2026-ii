@@ -1,9 +1,11 @@
 package com.isil.edu.pe.pedidos.reportes.repository;
 
 import com.isil.edu.pe.pedidos.reportes.repository.mapper.PedidoRowMapper;
+import com.isil.edu.pe.pedidos.reportes.repository.projection.ConteoRevisionProjection;
 import com.isil.edu.pe.pedidos.reportes.repository.projection.ProductoVendidoProjection;
 import com.isil.edu.pe.pedidos.reportes.repository.projection.ResumenPedidosProjection;
 import com.isil.edu.pe.pedidos.reportes.service.domain.Pedido;
+import com.isil.edu.pe.pedidos.reportes.service.domain.PedidoRevisionReporte;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
@@ -161,6 +163,48 @@ public class PedidoReporteJdbcRepository {
                 )
             )
     );
+  }
+
+  /**
+   * PA4: pedidos con su estado de revisión (LEFT JOIN a pedido_revision).
+   * El filtro es opcional; el valor viaja como parámetro (?) y nunca se concatena.
+   *
+   * @param revisado null = todos; true = revisados; false = pendientes
+   */
+  public List<PedidoRevisionReporte> listarRevisiones(Boolean revisado) {
+    String base = """
+        SELECT p.id, p.cliente, p.producto_nombre, p.total, p.revisado,
+               r.observacion, r.fecha_revision
+        FROM pedido p
+        LEFT JOIN pedido_revision r ON r.pedido_id = p.id
+        """;
+    String orden = " ORDER BY p.id DESC";
+    org.springframework.jdbc.core.RowMapper<PedidoRevisionReporte> mapper = (rs, rowNum) ->
+        new PedidoRevisionReporte(
+            rs.getLong("id"),
+            rs.getString("cliente"),
+            rs.getString("producto_nombre"),
+            valorMonetario(rs.getBigDecimal("total")),
+            rs.getBoolean("revisado"),
+            rs.getString("observacion"),
+            rs.getTimestamp("fecha_revision") == null
+                ? null : rs.getTimestamp("fecha_revision").toLocalDateTime());
+
+    if (revisado == null) {
+      return jdbcTemplate.query(base + orden, mapper);
+    }
+    return jdbcTemplate.query(base + " WHERE p.revisado = ?" + orden, mapper, revisado);
+  }
+
+  /** PA4: conteos para las estadísticas de revisión. */
+  public ConteoRevisionProjection contarRevisiones() {
+    String sql = """
+        SELECT COUNT(*) AS total_pedidos,
+               COALESCE(SUM(CASE WHEN revisado = true THEN 1 ELSE 0 END), 0) AS total_revisados
+        FROM pedido
+        """;
+    return jdbcTemplate.queryForObject(sql, (rs, rowNum) ->
+        new ConteoRevisionProjection(rs.getLong("total_pedidos"), rs.getLong("total_revisados")));
   }
 
   private BigDecimal valorMonetario(
