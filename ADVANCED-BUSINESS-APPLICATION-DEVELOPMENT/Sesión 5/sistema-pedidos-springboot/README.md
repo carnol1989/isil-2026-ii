@@ -632,3 +632,183 @@ Para ejecutar toda la suite:
 ---
 
 **Uso académico:** curso *Desarrollo de Aplicaciones Empresariales Avanzado* · Continuidad del caso **Sistema de Pedidos** · Sesiones 7 y 9: **Spring MVC, Seguridad con Spring y Spring JDBC**.
+
+---
+
+## 15. PA4 — Revisión transaccional de pedidos, supervisión MVC e integración REST
+
+> **Proceso de Aprendizaje 4** · Desarrollo de Aplicaciones Empresariales Avanzado · 2026-20  
+> Estudiante: Angeles Rivera, Jeremy Andre · Rama evaluada: `feature/pa4-angeles`
+
+Esta sección documenta el flujo nuevo **revisión de pedido**: un pedido registrado se marca como revisado y queda una evidencia de trazabilidad. La actualización del pedido y el registro de la revisión se confirman juntos o se revierten juntos (transacción local Spring JDBC). La vista de supervisión consume por HTTP dos recursos nuevos de `pedidos-reportes-service`.
+
+> **Nota:** las secciones 6 y 11 mencionan la base `sistema_pedidos` (sesiones anteriores). Para PA4 se utiliza la base **`pedidosdb`**, tal como está configurada en `application.properties` de ambos proyectos.
+
+### 15.1 Diagrama de arquitectura
+
+![Arquitectura PA4](docs/diagrama_arquitectura_pa4.png)
+
+```text
+Navegador -> Spring Security -> DispatcherServlet -> SupervisionPedidoController
+   |-- POST /supervision/pedidos/{id}/revisar -> PedidoRevisionService (@Transactional)
+   |        -> PedidoRevisionJdbcRepository -> MySQL (UPDATE pedido + INSERT pedido_revision)
+   |-- GET  /supervision/pedidos -> PedidoReporteClient (RestClient) -> HTTP/JSON
+            -> pedidos-reportes-service -> PedidoReporteService -> PedidoReporteJdbcRepository -> MySQL
+
+inventario-service (Jakarta EE / WildFly, :8082) = dependencia externa usada para registrar pedidos.
+```
+
+### 15.2 Requisitos
+
+- JDK 21, Maven Wrapper (`mvnw.cmd`), MySQL 8.x.
+- Puertos libres: **8081** (sistema-pedidos), **8083** (pedidos-reportes-service), **8082** (inventario-service, solo para registrar pedidos).
+
+### 15.3 Orden de arranque
+
+1. MySQL (base `pedidosdb`).
+2. `inventario-service` en WildFly (:8082), solo si se registrarán pedidos desde `/pedidos`.
+3. `pedidos-reportes-service` (:8083).
+4. `sistema-pedidos-springboot` (:8081).
+
+```powershell
+# Terminal 1 (reportes)
+cd "Sesión 12\pedidos-reportes-service"
+.\mvnw.cmd spring-boot:run
+
+# Terminal 2 (pedidos)
+cd "Sesión 5\sistema-pedidos-springboot"
+.\mvnw.cmd spring-boot:run
+```
+
+### 15.4 Variables de entorno
+
+No se incluyen credenciales en el repositorio. Ambos proyectos leen estas variables y, si no existen, usan valores de laboratorio definidos en su `application.properties`.
+
+| Variable | Proyecto | Uso |
+|---|---|---|
+| `DB_URL` | ambos | URL JDBC de MySQL (`jdbc:mysql://localhost:3306/pedidosdb?serverTimezone=America/Lima`). |
+| `DB_USERNAME` | ambos | Usuario de BD (`spedidos_app` en pedidos; `spedidos_reportes`, solo lectura, en reportes). |
+| `DB_PASSWORD` | ambos | Clave del usuario de BD. |
+| `PEDIDOS_OPERADOR_PASSWORD` | pedidos | Clave del usuario de laboratorio `operador`. |
+| `PEDIDOS_CONSULTA_PASSWORD` | pedidos | Clave del usuario de laboratorio `consulta`. |
+
+Preparación de MySQL (sustituir las claves por las configuradas en las variables anteriores):
+
+```sql
+CREATE DATABASE IF NOT EXISTS pedidosdb;
+CREATE USER IF NOT EXISTS 'spedidos_app'@'localhost' IDENTIFIED BY '<clave-app>';
+CREATE USER IF NOT EXISTS 'spedidos_reportes'@'localhost' IDENTIFIED BY '<clave-reportes>';
+GRANT ALL PRIVILEGES ON pedidosdb.* TO 'spedidos_app'@'localhost';
+GRANT SELECT ON pedidosdb.* TO 'spedidos_reportes'@'localhost';
+FLUSH PRIVILEGES;
+```
+
+> El usuario de reportes necesita `SELECT` sobre `pedido_revision`. Si se concedió antes de existir la tabla, repetir `GRANT SELECT ON pedidosdb.pedido_revision TO 'spedidos_reportes'@'localhost';` (ver `database/pa4_revision.sql`).
+
+### 15.5 Cambios de esquema
+
+| Objeto | Cambio |
+|---|---|
+| `pedido.revisado` | `BIT NOT NULL`, valor inicial `false`. |
+| `pedido_revision` | Tabla nueva: `id`, `pedido_id`, `observacion` (255), `fecha_revision`. |
+| Integridad | `FOREIGN KEY fk_pedido_revision_pedido (pedido_id) -> pedido(id)`. |
+| Restricción | `UNIQUE uk_pedido_revision_pedido (pedido_id)`: impide más de una revisión por pedido. |
+
+Hibernate (`ddl-auto=update`) crea los cambios al iniciar; el script equivalente está en `database/pa4_revision.sql`.
+
+### 15.6 Rutas nuevas
+
+Se anteponen los contextos `/sistema-pedidos` (8081) y `/pedidos-reportes-service` (8083).
+
+| Método | Ruta | Proyecto | Descripción |
+|---|---|---|---|
+| GET | `/supervision/pedidos[?estado=PENDIENTE\|REVISADO]` | sistema-pedidos | Vista JSP de supervisión; consume el servicio de reportes mediante `PedidoReporteClient`. |
+| POST | `/supervision/pedidos/{id}/revisar` | sistema-pedidos | Revisa un pedido (parámetro `observacion`). CSRF obligatorio, rol `OPERADOR`, Post/Redirect/Get. |
+| GET | `/api/v1/pedidos/revisiones[?estado=PENDIENTE\|REVISADO]` | reportes | Pedidos con su estado de revisión. `400` si el estado es inválido. |
+| GET | `/api/v1/pedidos/estadisticas/revisiones` | reportes | Totales y porcentaje de revisión. |
+
+Ejemplo `GET /pedidos-reportes-service/api/v1/pedidos/revisiones?estado=REVISADO`:
+
+```json
+[
+  {
+    "id": 1,
+    "cliente": "Ana Torres",
+    "productoNombre": "Laptop",
+    "total": 200,
+    "revisado": true,
+    "estado": "REVISADO",
+    "observacion": "Datos verificados",
+    "fechaRevision": "2026-11-24T23:45:35.217408"
+  }
+]
+```
+
+Ejemplo `GET /pedidos-reportes-service/api/v1/pedidos/estadisticas/revisiones`:
+
+```json
+{ "totalPedidos": 3, "totalRevisados": 2, "totalPendientes": 1, "porcentajeRevisado": 66.67 }
+```
+
+Ejemplo de error (`?estado=XYZ`, HTTP 400):
+
+```json
+{ "title": "Parámetro inválido", "status": 400,
+  "detail": "El estado 'XYZ' no es válido. Valores permitidos: PENDIENTE, REVISADO.",
+  "instance": "/pedidos-reportes-service/api/v1/pedidos/revisiones" }
+```
+
+### 15.7 Usuarios y roles de laboratorio
+
+| Usuario | Rol | Permisos en PA4 |
+|---|---|---|
+| `operador` | `OPERADOR` | Ver supervisión y revisar pedidos. |
+| `consulta` | `CONSULTA` | Solo ver supervisión; `POST .../revisar` responde **403**. |
+
+Las claves provienen de `PEDIDOS_OPERADOR_PASSWORD` / `PEDIDOS_CONSULTA_PASSWORD` (valores de laboratorio en la sección 6). CSRF permanece activo: el formulario envía el token y no se desactiva la seguridad.
+
+### 15.8 Comandos Maven
+
+```powershell
+# sistema-pedidos-springboot
+.\mvnw.cmd clean test
+.\mvnw.cmd test -Dtest=PedidoRevisionRollbackIntegrationTest   # caso 4 (rollback)
+.\mvnw.cmd spring-boot:run
+
+# pedidos-reportes-service
+.\mvnw.cmd clean test
+.\mvnw.cmd spring-boot:run
+```
+
+### 15.9 Pruebas nuevas
+
+| Proyecto | Clase | Tipo | Qué verifica |
+|---|---|---|---|
+| pedidos | `PedidoRevisionServiceTest` (4) | Integración Spring + H2 | Commit; revisión duplicada; pedido inexistente; validaciones sin escrituras. |
+| pedidos | `PedidoRevisionRollbackIntegrationTest` (1) | Integración Spring + H2 | **Rollback real**: el INSERT falla tras el UPDATE y `revisado` conserva `false`. |
+| pedidos | `PedidoReporteRestClientRevisionesTest` (5) | Unitaria (`MockRestServiceServer`) | Mapeo JSON/DTO, error 5xx, conexión rechazada y estado inválido. |
+| pedidos | `SupervisionPedidoControllerTest` (4) | Mockito + MockMvc | Model de la vista, 503 controlado, PRG y mensaje de error. |
+| reportes | `PedidoReporteServiceRevisionesTest` (4) | Mockito | Cálculo de pendientes/porcentaje, división por cero y traducción del filtro. |
+| reportes | `PedidoRevisionReporteControllerTest` (3) | MockMvc standalone | JSON, `400` por estado inválido y DTO de estadísticas. |
+
+Resultado de `mvn clean test`: **sistema-pedidos 26 pruebas, 0 fallos** · **pedidos-reportes-service 8 pruebas, 0 fallos**.
+
+> Se retiraron del proyecto de pedidos tres clases de prueba heredadas (`PedidoApiControllerTest`, `PedidoReporteControllerIntegrationTest`, `PedidoReporteJdbcRepositoryTest`), un método en `PedidoSecurityIntegrationTest` y `PedidoReporteWebControllerTest`: referenciaban clases o endpoints migrados a `pedidos-reportes-service`, o requerían el puerto 8083 activo, por lo que no compilaban o no eran reproducibles.
+
+### 15.10 Cinco casos prácticos
+
+| Caso | Entrada | Resultado |
+|---|---|---|
+| 1. Revisión correcta | Pedido pendiente + observación válida | `revisado=1`, una fila en `pedido_revision`, JSP con estado REVISADO. |
+| 2. Revisión duplicada | Revisar de nuevo el mismo pedido | Mensaje "ya fue revisado"; sin fila nueva ni cambios. |
+| 3. Validaciones | Observación vacía, id inexistente (`9999`), id `0` | Mensajes comprensibles; sin escrituras. |
+| 4. Rollback real | Fallo del INSERT tras el UPDATE (prueba de integración) | `revisado` conserva `false`; sin revisión. |
+| 5. Servicio disponible / caído | Endpoints con 8083 activo; luego detenido | JSON y `400` correctos; con 8083 apagado la JSP muestra mensaje controlado y la BD queda íntegra. |
+
+### 15.11 Limitaciones
+
+- La transacción es **local a MySQL**: no se realizan llamadas HTTP dentro del bloque transaccional ni existe compensación con `inventario-service`.
+- Si `pedidos-reportes-service` cae, la vista de supervisión no muestra el listado (responde 503 con mensaje controlado) pero la revisión local sigue siendo consistente.
+- `fecha_revision` se almacena con la hora local de la JVM; en el entorno de laboratorio se observó un desfase de 5 horas atribuible a la conversión de zona horaria del driver MySQL (no afecta la consistencia).
+- Usuarios en memoria y claves de laboratorio: no aptos para producción.
+- Los pedidos de prueba de la evidencia se cargaron por SQL; el registro desde `/pedidos` requiere `inventario-service` activo.
