@@ -13,7 +13,6 @@
 
         <jta-data-source>java:jboss/datasources/ExampleDS</jta-data-source>
 
-        <class>pe.edu.isil.pedidos.domain.Producto</class>
         <class>pe.edu.isil.pedidos.domain.Pedido</class>
 
         <properties>

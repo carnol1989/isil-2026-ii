@@ -1,0 +1,40 @@
+@startuml
+skinparam componentStyle rectangle
+
+actor Usuario
+component "sistema-pedidos-jsp\n:8081" as Pedidos {
+  component PedidoServlet
+  component PedidoService
+  database "H2\nPedidos" as H2
+}
+component "inventario-service\n:8082" as Inventario {
+  component "ProductoResource\nJakarta REST" as Resource
+  component InventarioService
+  database "SQL Server Express 2025\nInventarioDB" as SQL
+}
+
+Usuario --> PedidoServlet : HTTP
+PedidoServlet --> PedidoService : @EJB
+PedidoService --> H2 : JPA\nPedido snapshot
+PedidoService --> Resource : HTTP + JSON\nJakarta REST Client
+Resource --> InventarioService : @EJB
+InventarioService --> SQL : JPA
+
+note right of SQL
+Fuente de verdad de:
+- código
+- nombre
+- precio
+- stock
+end note
+
+note left of H2
+Conserva el histórico:
+- cliente
+- productoCodigo
+- productoNombre
+- precioUnitario
+- cantidad
+- total
+end note
+@enduml

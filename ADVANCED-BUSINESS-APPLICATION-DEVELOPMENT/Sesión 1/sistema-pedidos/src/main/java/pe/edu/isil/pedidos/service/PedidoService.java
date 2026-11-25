@@ -1,7 +1,6 @@
 package pe.edu.isil.pedidos.service;
 
-import pe.edu.isil.pedidos.domain.Pedido;
-import pe.edu.isil.pedidos.domain.Producto;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.ejb.TransactionAttribute;
 import jakarta.ejb.TransactionAttributeType;
@@ -9,99 +8,73 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.math.BigDecimal;
 import java.util.List;
+import pe.edu.isil.pedidos.domain.Pedido;
+import pe.edu.isil.pedidos.integration.InventarioClient;
+import pe.edu.isil.pedidos.integration.InventarioClientException;
+import pe.edu.isil.pedidos.integration.dto.ProductoInventarioResponse;
+import pe.edu.isil.pedidos.integration.dto.ReservaStockResponse;
 
 /**
- * Servicio EJB que maneja la lógica de negocio relacionada con los pedidos.
+ * Servicio EJB responsable de los pedidos.
+ *
+ * <p>El catálogo, precio y stock pertenecen a inventario-service. Esta
+ * aplicación solo conserva un snapshot de los datos del producto dentro del
+ * pedido histórico.</p>
  */
 @Stateless
 public class PedidoService {
 
-  @PersistenceContext(
-      unitName = "PedidosPU"
-  )
+  @PersistenceContext(unitName = "PedidosPU")
   private EntityManager entityManager;
 
-  /**
-   * Registra un nuevo pedido en el sistema.
-   *
-   * @param cliente    Nombre del cliente que realiza el pedido.
-   * @param productoId ID del producto que se desea comprar.
-   * @param cantidad   Cantidad de productos a comprar.
-   * @return El pedido registrado.
-   * @throws IllegalArgumentException Si alguno de los parámetros es inválido o si el producto no existe.
-   */
-  @TransactionAttribute(
-      TransactionAttributeType.REQUIRED
-  )
-  public Pedido registrarPedido(String cliente, Long productoId, int cantidad) {
-    if (cliente == null ||
-        cliente.isBlank()) {
-      throw new IllegalArgumentException("El cliente es obligatorio.");
+  @EJB
+  private InventarioClient inventarioClient;
+
+  @TransactionAttribute(TransactionAttributeType.REQUIRED)
+  public Pedido registrarPedido(String cliente, String productoCodigo, int cantidad) {
+    validarDatos(cliente, productoCodigo, cantidad);
+
+    final ReservaStockResponse reserva;
+    try {
+      // Una sola operación remota valida disponibilidad y descuenta el stock.
+      reserva = inventarioClient.reservarStock(productoCodigo.trim(), cantidad);
+    } catch (InventarioClientException e) {
+      // 400/404/409 se presentan como errores de negocio del formulario.
+      throw new PedidoException(e.getMessage());
     }
 
-    if (productoId == null) {
-      throw new IllegalArgumentException("Debe seleccionar un producto.");
-    }
+    validarReserva(reserva);
 
-    if (cantidad <= 0) {
-      throw new IllegalArgumentException("La cantidad debe ser mayor que cero.");
-    }
+    BigDecimal total = reserva.getPrecio().multiply(BigDecimal.valueOf(cantidad));
 
-    Producto producto = entityManager.find(Producto.class, productoId);
-
-    if (producto == null) {
-      throw new IllegalArgumentException("El producto no existe.");
-    }
-
-    // REGLA DE NEGOCIO
-    producto.descontarStock(cantidad);
-
-    BigDecimal total = producto.getPrecio().multiply(BigDecimal.valueOf(cantidad));
-
-    Pedido pedido = new Pedido(cliente.trim(), producto, cantidad, total);
+    Pedido pedido = new Pedido(
+        cliente.trim(),
+        reserva.getCodigo(),
+        reserva.getNombre(),
+        reserva.getPrecio(),
+        cantidad,
+        total
+    );
 
     entityManager.persist(pedido);
-
     return pedido;
   }
 
   /**
-   * Lista todos los productos disponibles en el sistema.
-   *
-   * @return Lista de productos.
+   * El combo de productos se obtiene directamente desde inventario-service.
    */
-  @TransactionAttribute(
-      TransactionAttributeType.REQUIRED
-  )
-  public List<Producto> listarProductos() {
-    inicializarProductosSiEsNecesario();
-    return entityManager
-        .createQuery(
-            """
-            select p
-            from Producto p
-            order by p.id
-            """,
-            Producto.class
-        )
-        .getResultList();
+  @TransactionAttribute(TransactionAttributeType.SUPPORTS)
+  public List<ProductoInventarioResponse> listarProductos() {
+    return inventarioClient.listarProductos();
   }
 
-  /**
-   * Lista todos los pedidos realizados en el sistema.
-   *
-   * @return Lista de pedidos.
-   */
-  @TransactionAttribute(
-      TransactionAttributeType.SUPPORTS
-  )
+  @TransactionAttribute(TransactionAttributeType.SUPPORTS)
   public List<Pedido> listarPedidos() {
     return entityManager
         .createQuery(
             """
             select p
             from Pedido p
-            join fetch p.producto
             order by p.id desc
             """,
             Pedido.class
@@ -109,46 +82,28 @@ public class PedidoService {
         .getResultList();
   }
 
-  /**
-   * Inicializa algunos productos de ejemplo si no existen en la base de datos.
-   */
-  private void inicializarProductosSiEsNecesario() {
-    Long cantidad =
-        entityManager
-            .createQuery(
-                """
-                select count(p)
-                from Producto p
-                """,
-                Long.class
-            )
-            .getSingleResult();
-
-    if (cantidad == 0) {
-      entityManager.persist(
-          new Producto(
-              "Laptop",
-              new BigDecimal("2500.00"),
-              5
-          )
-      );
-
-      entityManager.persist(
-          new Producto(
-              "Monitor",
-              new BigDecimal("850.00"),
-              8
-          )
-      );
-
-      entityManager.persist(
-          new Producto(
-              "Teclado",
-              new BigDecimal("120.00"),
-              15
-          )
-      );
+  private void validarDatos(String cliente, String productoCodigo, int cantidad) {
+    if (cliente == null || cliente.isBlank()) {
+      throw new PedidoException("El cliente es obligatorio.");
+    }
+    if (productoCodigo == null || productoCodigo.isBlank()) {
+      throw new PedidoException("Debe seleccionar un producto.");
+    }
+    if (cantidad <= 0) {
+      throw new PedidoException("La cantidad debe ser mayor que cero.");
     }
   }
 
+  private void validarReserva(ReservaStockResponse reserva) {
+    if (reserva == null
+        || reserva.getCodigo() == null
+        || reserva.getCodigo().isBlank()
+        || reserva.getNombre() == null
+        || reserva.getNombre().isBlank()
+        || reserva.getPrecio() == null) {
+      throw new PedidoException(
+          "inventario-service devolvió una respuesta incompleta para registrar el pedido."
+      );
+    }
+  }
 }
